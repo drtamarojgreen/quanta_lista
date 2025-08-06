@@ -1,6 +1,87 @@
 #include "QuantaLista.h"
 #include <iostream>
 #include <vector>
+#include <algorithm>
+#include <sstream>
+
+// Helper function to extract a string value from a JSON string
+std::string extract_string(const std::string& json_string, const std::string& key) {
+    std::string key_str = "\"" + key + "\": \"";
+    size_t start = json_string.find(key_str);
+    if (start == std::string::npos) {
+        return "";
+    }
+    start += key_str.length();
+    size_t end = json_string.find("\"", start);
+    return json_string.substr(start, end - start);
+}
+
+// Helper function to extract an int value from a JSON string
+int extract_int(const std::string& json_string, const std::string& key) {
+    std::string key_str = "\"" + key + "\": ";
+    size_t start = json_string.find(key_str);
+    if (start == std::string::npos) {
+        return 0;
+    }
+    start += key_str.length();
+    size_t end = json_string.find_first_of(",}", start);
+    return std::stoi(json_string.substr(start, end - start));
+}
+
+// Helper function to extract a string vector from a JSON string
+std::vector<std::string> extract_string_vector(const std::string& json_string, const std::string& key) {
+    std::vector<std::string> result;
+    std::string key_str = "\"" + key + "\": [";
+    size_t start = json_string.find(key_str);
+    if (start == std::string::npos) {
+        return result;
+    }
+    start += key_str.length();
+    size_t end = json_string.find("]", start);
+    std::string deps_str = json_string.substr(start, end - start);
+    std::stringstream ss(deps_str);
+    std::string dep;
+    while (std::getline(ss, dep, ',')) {
+        size_t first = dep.find("\"");
+        size_t last = dep.find_last_of("\"");
+        if (first != std::string::npos && last != std::string::npos) {
+            result.push_back(dep.substr(first + 1, last - first - 1));
+        }
+    }
+    return result;
+}
+
+
+Task from_json(const std::string& json_string) {
+    Task task;
+    task.task_id = extract_string(json_string, "task_id");
+    task.description = extract_string(json_string, "description");
+    task.priority = extract_string(json_string, "priority");
+    task.dependencies = extract_string_vector(json_string, "dependencies");
+    task.component = extract_string(json_string, "component");
+    task.max_runtime_sec = extract_int(json_string, "max_runtime_sec");
+    return task;
+}
+
+std::string to_json(const Task& task) {
+    std::string json_string = "{";
+    json_string += "\"task_id\": \"" + task.task_id + "\",";
+    json_string += "\"description\": \"" + task.description + "\",";
+    json_string += "\"priority\": \"" + task.priority + "\",";
+    json_string += "\"dependencies\": [";
+    for (size_t i = 0; i < task.dependencies.size(); ++i) {
+        json_string += "\"" + task.dependencies[i] + "\"";
+        if (i < task.dependencies.size() - 1) {
+            json_string += ",";
+        }
+    }
+    json_string += "],";
+    json_string += "\"component\": \"" + task.component + "\",";
+    json_string += "\"max_runtime_sec\": " + std::to_string(task.max_runtime_sec);
+    json_string += "}";
+    return json_string;
+}
+
 
 // --- AgentManager Class Implementation ---
 
@@ -26,19 +107,14 @@ void AgentManager::setAgentState(const std::string& agentId, AgentState newState
 
 // --- Scheduler Class Implementation ---
 
-void Scheduler::submitWorkflow(const Workflow& workflow) {
-    for (const auto& task : workflow.tasks) {
-        tasks.emplace(task.id, task);
-        if (task.status == "Pending") {
-            pending_task_ids.push_back(task.id);
-        }
-    }
+void Scheduler::submitTask(const Task& task) {
+    tasks.emplace(task.task_id, task);
+    pending_task_ids.push_back(task.task_id);
 }
 
 bool Scheduler::areDependenciesMet(const Task& task) {
     for (const auto& depId : task.dependencies) {
-        auto it = tasks.find(depId);
-        if (it == tasks.end() || it->second.status != "Completed") {
+        if (std::find(completed_task_ids.begin(), completed_task_ids.end(), depId) == completed_task_ids.end()) {
             return false;
         }
     }
@@ -46,78 +122,90 @@ bool Scheduler::areDependenciesMet(const Task& task) {
 }
 
 Task* Scheduler::getNextAvailableTask() {
-    for (const auto& taskId : pending_task_ids) {
-        Task& task = tasks.at(taskId);
-        if (task.status == "Pending" && areDependenciesMet(task)) {
+    for (auto it = pending_task_ids.begin(); it != pending_task_ids.end(); ++it) {
+        Task& task = tasks.at(*it);
+        if (areDependenciesMet(task)) {
             return &task;
         }
     }
     return nullptr;
 }
 
-void Scheduler::updateTaskStatus(const std::string& taskId, const std::string& newStatus) {
-    auto it = tasks.find(taskId);
-    if (it != tasks.end()) {
-        it->second.status = newStatus;
-    }
+void Scheduler::markTaskAsCompleted(const std::string& taskId) {
+    // Remove from pending tasks
+    pending_task_ids.erase(std::remove(pending_task_ids.begin(), pending_task_ids.end(), taskId), pending_task_ids.end());
+    // Add to completed tasks
+    completed_task_ids.push_back(taskId);
 }
+
+#include <filesystem>
+#include <fstream>
+#include <thread>
+#include <chrono>
+#include <random>
 
 // --- Coordinator Class Implementation ---
 
-Coordinator::Coordinator() : total_task_count(0) {}
+Coordinator::Coordinator(const std::string& queue_dir) {
+    pending_dir = std::filesystem::path(queue_dir) / "pending";
+    in_progress_dir = std::filesystem::path(queue_dir) / "in_progress";
+    completed_dir = std::filesystem::path(queue_dir) / "completed";
+    failed_dir = std::filesystem::path(queue_dir) / "failed";
 
-void Coordinator::setupProject(const Project& project) {
-    std::cout << "Setting up project: " << project.name << std::endl;
+    std::filesystem::create_directories(pending_dir);
+    std::filesystem::create_directories(in_progress_dir);
+    std::filesystem::create_directories(completed_dir);
+    std::filesystem::create_directories(failed_dir);
+}
 
-    for (const auto& agent : project.agents) {
-        agent_manager.registerAgent(agent);
+void Coordinator::processPendingTasks() {
+    for (const auto& entry : std::filesystem::directory_iterator(pending_dir)) {
+        if (entry.is_regular_file() && entry.path().extension() == ".json") {
+            auto filename = entry.path().filename();
+            // Read and parse the task file
+            std::ifstream task_file(entry.path());
+            std::string content((std::istreambuf_iterator<char>(task_file)), std::istreambuf_iterator<char>());
+            Task task = from_json(content);
+            task_file.close();
+
+            std::cout << "Processing task: " << task.task_id << std::endl;
+
+            // Move to in_progress
+            auto in_progress_path = in_progress_dir / filename;
+            std::filesystem::rename(entry.path(), in_progress_path);
+
+            scheduler.submitTask(task);
+
+            // Simulate task processing
+            // In a real scenario, this would be handled by QuantaSensa
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+
+            // Mark as completed
+            scheduler.markTaskAsCompleted(task.task_id);
+
+            // Create result file
+            auto completed_path = completed_dir / filename;
+            std::ofstream result_file(completed_path);
+            std::string result_json_str = "{";
+            result_json_str += "\"task_id\": \"" + task.task_id + "\",";
+            result_json_str += "\"status\": \"completed\",";
+            result_json_str += "\"output\": \"Task processed successfully.\"";
+            result_json_str += "}";
+            result_file << result_json_str << std::endl;
+            result_file.close();
+
+            // Remove from in_progress
+            std::filesystem::remove(in_progress_path);
+
+            std::cout << "Task " << task.task_id << " completed." << std::endl;
+        }
     }
-    std::cout << "Registered " << project.agents.size() << " agents." << std::endl;
-
-    for (const auto& workflow : project.workflows) {
-        scheduler.submitWorkflow(workflow);
-        total_task_count += workflow.tasks.size();
-    }
-    std::cout << "Submitted " << project.workflows.size() << " workflows with a total of " << total_task_count << " tasks." << std::endl;
 }
 
 void Coordinator::run() {
-    std::cout << "\n--- Starting Coordinator Simulation Loop ---" << std::endl;
-    int completed_tasks_count = 0;
-    while (completed_tasks_count < total_task_count) {
-        Agent* available_agent = agent_manager.getIdleAgent();
-        Task* available_task = scheduler.getNextAvailableTask();
-
-        if (available_agent && available_task) {
-            std::cout << "Coordinator assigning task '" << available_task->name << "' to agent '" << available_agent->name << "'." << std::endl;
-
-            agent_manager.setAgentState(available_agent->id, AgentState::BUSY);
-            scheduler.updateTaskStatus(available_task->id, "In Progress");
-            std::cout << "  - Agent: BUSY, Task: In Progress" << std::endl;
-
-            // Simulate work...
-            std::cout << "  - Simulating work for task: " << available_task->name << std::endl;
-
-            scheduler.updateTaskStatus(available_task->id, "Completed");
-            agent_manager.setAgentState(available_agent->id, AgentState::IDLE);
-            std::cout << "  - Task '" << available_task->name << "' completed." << std::endl;
-            std::cout << "  - Agent: IDLE" << std::endl << std::endl;
-
-            completed_tasks_count++;
-            continue;
-        }
-
-        if (!available_task) {
-            std::cout << "No more tasks are ready to be processed. Halting simulation." << std::endl;
-            break;
-        }
-
-        if (!available_agent) {
-             // This case is less likely in a simple synchronous simulation but good to handle.
-             // It means a task is ready but no agent is free. We'll just wait for the next cycle.
-        }
+    std::cout << "QuantaLista daemon started. Monitoring " << pending_dir << std::endl;
+    while (true) {
+        processPendingTasks();
+        std::this_thread::sleep_for(std::chrono::seconds(5));
     }
-
-    std::cout << "--- Coordinator Simulation Finished ---" << std::endl;
-    std::cout << "Total tasks completed: " << completed_tasks_count << " out of " << total_task_count << std::endl;
 }
