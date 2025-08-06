@@ -6,29 +6,60 @@ QuantaLista is an intelligent coordination and management layer for multi-agent 
 It is designed for developers and researchers building sophisticated applications with autonomous agents, from collaborative software development teams to distributed scientific discovery systems.
 
 ### Key Features:
-- **Dynamic Task Scheduling and Prioritization**: Utilizes advanced algorithms to manage a queue of tasks. It considers dependencies, agent availability, task urgency, and overall project goals to create an optimal execution schedule.
-- **Multi-Agent Coordination Engine**: Provides the backbone for agent collaboration, including shared state management, robust communication protocols, and conflict resolution mechanisms to ensure agents work in harmony.
-- **Workflow Optimization Analytics**: Gathers and displays key performance indicators on agent activity, task completion times, and resource utilization. These analytics help identify bottlenecks and areas for workflow improvement.
-- **User-Driven Task Assignment Controls**: Offers a flexible interface for human oversight. Users can manually assign tasks, override system-generated priorities, and define custom rules for automated task distribution.
+- **Dynamic Task Scheduling and Prioritization**: A robust scheduling engine manages a queue of tasks, considering dependencies to ensure correct execution order.
+- **Multi-Agent Coordination Engine**: A central coordinator assigns tasks to available agents and manages their states (`IDLE`, `BUSY`).
+- **Structured and Testable Codebase**: The project is organized into a clean `src` and `test` directory structure, with a suite of unit tests to ensure reliability.
 
 ## Architecture Overview
 
-QuantaLista is built on a modular architecture:
+QuantaLista is built on a modular C++ architecture:
 
-- **API Server**: The main entry point for submitting tasks and managing agents.
+- **Coordinator**: The central engine that orchestrates the entire process.
 - **Scheduler**: The core component that handles task prioritization and dependency resolution.
-- **Coordinator**: Manages agent state and facilitates inter-agent communication.
-- **Analytics Engine**: Collects, processes, and stores performance data.
-- **Web UI**: A visual dashboard for monitoring, control, and analytics.
+- **AgentManager**: Manages agent registration and state.
+- **Data Models**: Clear C++ classes for `Project`, `Workflow`, `Task`, and `Agent`.
 
 ## Getting Started
 
-*(Coming soon: Installation and setup instructions)*
+The source code and related files are located in the `QuantaLista/` directory.
+
+### Prerequisites
+- A C++ compiler that supports C++11 (e.g., g++, clang++).
+
+### Compilation
+Navigate to the `QuantaLista/` directory to run the compilation commands.
+
+**To compile the main application:**
+```bash
+g++ -std=c++11 -Isrc -o QuantaListaApp src/main.cpp src/QuantaLista.cpp
+```
+
+**To compile the unit tests:**
+```bash
+g++ -std=c++11 -Isrc -o run_tests test/tests.cpp src/QuantaLista.cpp
+```
+
+### Running the Application
+**To run the main simulation:**
+```bash
+./QuantaListaApp
+```
+
+**To run the unit tests:**
+```bash
+./run_tests
+```
 
 ## Example Usage
 
-*(Coming soon: A code example demonstrating how to define a workflow, register agents, and execute tasks.)*
+The main application (`QuantaListaApp`) provides a demonstration of the core coordination loop. When you run it, it will:
+1.  Initialize a `Coordinator`.
+2.  Define a sample project with two agents ("Researcher" and "Writer").
+3.  Define a sample workflow with three tasks, where the second task depends on the first, and the third depends on the second.
+4.  Run a simulation loop where the `Coordinator` assigns the tasks to the agents in the correct, dependency-aware order.
+
+The output will show the step-by-step process of tasks being assigned, processed, and completed. This demonstrates the core functionality of the task scheduler and agent manager working in harmony.
 
 ## Contributing
 
-We welcome contributions! Please see `CONTRIBUTING.md` for details on how to get started with development, submit issues, and make pull requests.
+We welcome contributions! Please see the documents in the `docs/` directory for more information on the development plan and future enhancements.
