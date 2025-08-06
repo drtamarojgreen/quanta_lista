@@ -1,7 +1,11 @@
 #include "QuantaLista.h"
+#include "cli.h"
 #include <iostream>
 #include <cassert>
 #include <string>
+#include <fstream>
+#include <filesystem>
+#include <sstream>
 
 // Simple test runner framework
 void run_test(void (*test_function)(), const std::string& test_name) {
@@ -42,58 +46,45 @@ void test_agent_manager_state_management() {
     assert(agent->id == "agent_1");
 }
 
-void test_scheduler_task_with_no_dependencies() {
-    Scheduler scheduler;
-    Workflow wf("wf_1", "TestWF");
-    wf.addTask(Task("task_1", "Standalone Task", "", "Pending", {}));
-    scheduler.submitWorkflow(wf);
-
-    Task* task = scheduler.getNextAvailableTask();
-    assert(task != nullptr);
-    assert(task->id == "task_1");
+void test_add_task() {
+    system("rm -rf ./queue");
+    char* argv[] = {(char*)"quantalista", (char*)"add", (char*)"task1", (char*)"Test Task", (char*)"high", (char*)"test_comp", (char*)"10", (char*)"dep1,dep2"};
+    addTask(8, argv);
+    assert(std::filesystem::exists("./queue/pending/task1.json"));
 }
 
-void test_scheduler_task_dependency_not_met() {
-    Scheduler scheduler;
-    Workflow wf("wf_1", "TestWF");
-    wf.addTask(Task("task_1", "Prerequisite Task", "", "Pending", {}));
-    wf.addTask(Task("task_2", "Dependent Task", "", "Pending", {"task_1"}));
-    scheduler.submitWorkflow(wf);
-
-    // Get the first task, but don't complete it yet
-    Task* first_task = scheduler.getNextAvailableTask();
-    assert(first_task != nullptr && first_task->id == "task_1");
-    scheduler.updateTaskStatus(first_task->id, "In Progress");
-
-    // Try to get the next task, should be nullptr as the dependency is not "Completed"
-    Task* second_task = scheduler.getNextAvailableTask();
-    assert(second_task == nullptr);
+void test_list_tasks() {
+    system("rm -rf ./queue");
+    std::filesystem::create_directories("./queue/pending");
+    std::ofstream("./queue/pending/task1.json").close();
+    // Redirect cout to a stringstream to capture output
+    std::stringstream buffer;
+    std::streambuf* old = std::cout.rdbuf(buffer.rdbuf());
+    listTasks();
+    std::cout.rdbuf(old);
+    std::string output = buffer.str();
+    assert(output.find("task1.json") != std::string::npos);
 }
 
-void test_scheduler_task_dependency_met() {
-    Scheduler scheduler;
-    Workflow wf("wf_1", "TestWF");
-    wf.addTask(Task("task_1", "Prerequisite Task", "", "Pending", {}));
-    wf.addTask(Task("task_2", "Dependent Task", "", "Pending", {"task_1"}));
-    scheduler.submitWorkflow(wf);
+void test_daemon_processing() {
+    system("rm -rf ./queue");
+    char* argv[] = {(char*)"quantalista", (char*)"add", (char*)"task1", (char*)"Test Task", (char*)"high", (char*)"test_comp", (char*)"10", (char*)""};
+    addTask(7, argv);
 
-    // Complete the first task
-    scheduler.updateTaskStatus("task_1", "Completed");
-
-    // Now the second task should be available
-    Task* task = scheduler.getNextAvailableTask();
-    assert(task != nullptr);
-    assert(task->id == "task_2");
+    Coordinator coordinator("./queue");
+    coordinator.processPendingTasks();
+    assert(std::filesystem::exists("./queue/completed/task1.json"));
 }
+
 
 int main() {
     std::cout << "--- Starting QuantaLista Unit Tests ---" << std::endl << std::endl;
 
     run_test(test_agent_manager_registration_and_retrieval, "AgentManager: Registration and Retrieval");
     run_test(test_agent_manager_state_management, "AgentManager: State Management");
-    run_test(test_scheduler_task_with_no_dependencies, "Scheduler: Task with No Dependencies");
-    run_test(test_scheduler_task_dependency_not_met, "Scheduler: Task Dependency Not Met");
-    run_test(test_scheduler_task_dependency_met, "Scheduler: Task Dependency Met");
+    run_test(test_add_task, "CLI: Add Task");
+    run_test(test_list_tasks, "CLI: List Tasks");
+    run_test(test_daemon_processing, "Daemon: Task Processing");
 
     std::cout << "--- All tests passed successfully! ---" << std::endl;
 
