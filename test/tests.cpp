@@ -67,13 +67,33 @@ void test_list_tasks() {
 }
 
 void test_daemon_processing() {
+    // This test verifies that the scheduler processes tasks in priority order.
     system("rm -rf ./queue");
-    char* argv[] = {(char*)"quantalista", (char*)"add", (char*)"task1", (char*)"Test Task", (char*)"high", (char*)"test_comp", (char*)"10", (char*)""};
-    addTask(7, argv);
 
-    Coordinator coordinator("./queue");
-    coordinator.processPendingTasks();
-    assert(std::filesystem::exists("./queue/completed/task1.json"));
+    Project project("p1", "Test Project");
+    Workflow workflow("wf1", "Test Workflow");
+    // Add tasks in non-priority order. t2 (high) should run before t1 (low).
+    workflow.addTask(Task("t1", "low priority task", "low", {}, "c1", 1));
+    workflow.addTask(Task("t2", "high priority task", "high", {}, "c1", 1));
+    workflow.addTask(Task("t3", "medium priority task", "medium", {}, "c1", 1));
+    workflow.addTask(Task("t4", "dependent task", "high", {"t2"}, "c1", 1));
+
+
+    project.addWorkflow(workflow);
+
+    Coordinator coordinator(project, "./queue");
+    coordinator.registerAgent(Agent("agent1", "TestAgent1"));
+
+    coordinator.run(); // run will process the tasks and exit
+
+    const auto& completed_tasks = coordinator.getScheduler().getCompletedTaskIds();
+    assert(completed_tasks.size() == 4);
+
+    // Check completion order based on priority
+    assert(completed_tasks[0] == "t2"); // high
+    assert(completed_tasks[1] == "t4"); // high, dependent on t2
+    assert(completed_tasks[2] == "t3"); // medium
+    assert(completed_tasks[3] == "t1"); // low
 }
 
 

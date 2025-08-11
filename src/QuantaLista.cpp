@@ -105,11 +105,21 @@ void AgentManager::setAgentState(const std::string& agentId, AgentState newState
     }
 }
 
+const Agent* AgentManager::getAgent(const std::string& agentId) const {
+    auto it = agents.find(agentId);
+    if (it != agents.end()) {
+        return &it->second;
+    }
+    return nullptr;
+}
+
 // --- Scheduler Class Implementation ---
+
+Scheduler::Scheduler() : pending_tasks(TaskComparator{&tasks}) {}
 
 void Scheduler::submitTask(const Task& task) {
     tasks.emplace(task.task_id, task);
-    pending_task_ids.push_back(task.task_id);
+    pending_tasks.insert(task.task_id);
 }
 
 bool Scheduler::areDependenciesMet(const Task& task) {
@@ -122,18 +132,22 @@ bool Scheduler::areDependenciesMet(const Task& task) {
 }
 
 Task* Scheduler::getNextAvailableTask() {
-    for (auto it = pending_task_ids.begin(); it != pending_task_ids.end(); ++it) {
+    for (auto it = pending_tasks.begin(); it != pending_tasks.end(); ++it) {
         Task& task = tasks.at(*it);
         if (areDependenciesMet(task)) {
-            return &task;
+            // Move task from pending to in-progress
+            in_progress_task_ids.push_back(*it);
+            auto task_ptr = &tasks.at(*it);
+            pending_tasks.erase(it);
+            return task_ptr;
         }
     }
     return nullptr;
 }
 
 void Scheduler::markTaskAsCompleted(const std::string& taskId) {
-    // Remove from pending tasks
-    pending_task_ids.erase(std::remove(pending_task_ids.begin(), pending_task_ids.end(), taskId), pending_task_ids.end());
+    // Remove from in-progress tasks
+    in_progress_task_ids.erase(std::remove(in_progress_task_ids.begin(), in_progress_task_ids.end(), taskId), in_progress_task_ids.end());
     // Add to completed tasks
     completed_task_ids.push_back(taskId);
 }
@@ -144,9 +158,11 @@ void Scheduler::markTaskAsCompleted(const std::string& taskId) {
 #include <chrono>
 #include <random>
 
+#include <utility>
+
 // --- Coordinator Class Implementation ---
 
-Coordinator::Coordinator(const std::string& queue_dir) {
+Coordinator::Coordinator(Project p, const std::string& queue_dir) : project(std::move(p)) {
     pending_dir = std::filesystem::path(queue_dir) / "pending";
     in_progress_dir = std::filesystem::path(queue_dir) / "in_progress";
     completed_dir = std::filesystem::path(queue_dir) / "completed";
@@ -156,6 +172,10 @@ Coordinator::Coordinator(const std::string& queue_dir) {
     std::filesystem::create_directories(in_progress_dir);
     std::filesystem::create_directories(completed_dir);
     std::filesystem::create_directories(failed_dir);
+}
+
+void Coordinator::registerAgent(const Agent& agent) {
+    agent_manager.registerAgent(agent);
 }
 
 void Coordinator::processPendingTasks() {
@@ -203,9 +223,61 @@ void Coordinator::processPendingTasks() {
 }
 
 void Coordinator::run() {
-    std::cout << "QuantaLista daemon started. Monitoring " << pending_dir << std::endl;
-    while (true) {
-        processPendingTasks();
-        std::this_thread::sleep_for(std::chrono::seconds(5));
+    std::cout << "QuantaLista daemon started." << std::endl;
+
+    int total_tasks = 0;
+    // Submit all tasks from the project to the scheduler
+    for (const auto& workflow : project.workflows) {
+        for (const auto& task : workflow.tasks) {
+            scheduler.submitTask(task);
+            total_tasks++;
+        }
     }
+
+    std::map<std::string, std::chrono::steady_clock::time_point> task_finish_times;
+    std::map<std::string, std::string> agent_assignments; // agent_id -> task_id
+
+    while (scheduler.getCompletedTaskIds().size() < total_tasks) {
+        // 1. Check for completed tasks
+        auto now = std::chrono::steady_clock::now();
+        for (auto it = task_finish_times.begin(); it != task_finish_times.end(); ) {
+            if (now >= it->second) {
+                const std::string& task_id = it->first;
+                scheduler.markTaskAsCompleted(task_id);
+
+                // Find agent and set to idle
+                for (auto const& [agent_id, assigned_task_id] : agent_assignments) {
+                    if (assigned_task_id == task_id) {
+                        agent_manager.setAgentState(agent_id, AgentState::IDLE);
+                        std::cout << "Agent " << agent_id << " is now IDLE." << std::endl;
+                        agent_assignments.erase(agent_id);
+                        break;
+                    }
+                }
+
+                std::cout << "Task " << task_id << " completed." << std::endl;
+                it = task_finish_times.erase(it);
+            } else {
+                ++it;
+            }
+        }
+
+        // 2. Assign new tasks
+        Agent* idle_agent = agent_manager.getIdleAgent();
+        if (idle_agent) {
+            Task* new_task = scheduler.getNextAvailableTask();
+            if (new_task) {
+                agent_manager.setAgentState(idle_agent->id, AgentState::BUSY);
+                agent_assignments[idle_agent->id] = new_task->task_id;
+                task_finish_times[new_task->task_id] = std::chrono::steady_clock::now() + std::chrono::seconds(new_task->max_runtime_sec);
+
+                std::cout << "Assigned task " << new_task->task_id << " to agent " << idle_agent->name
+                          << ". Expected completion in " << new_task->max_runtime_sec << "s." << std::endl;
+            }
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    std::cout << "All tasks from the project have been processed." << std::endl;
 }
