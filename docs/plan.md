@@ -1,39 +1,39 @@
 # Development Plan for QuantaLista
 
-This plan outlines the phased development of QuantaLista, from a Minimum Viable Product (MVP) to a feature-rich platform.
+This document outlines the development plan for the QuantaLista ecosystem, which is composed of multiple independent services.
 
-## Phase 1: Core Functionality (MVP)
+## Phase 1: Core Functionality (Completed)
 
 **Objective:** Build the fundamental components for task and agent management.
+**Status:** Implemented and released as the **`QuantaLista-Core`** service.
 
-- **Define Core Data Models & Scope:**
-  - Research common multi-agent patterns (e.g., collaborative writing, research, software development).
-  - Finalize data structures for `Task`, `Agent`, `Workflow`, and `Project`.
-  - Specify the core API for task submission, agent registration, and status updates.
-- **Implement Core Scheduling Engine:**
-  - Develop a robust priority queue for task management.
-  - Implement dependency tracking to manage task execution order (e.g., Task B cannot start until Task A is complete).
-  - Create a basic agent state manager (e.g., `IDLE`, `BUSY`, `ERROR`).
+- **Core Data Models & Scope:**
+  - Finalized data structures for `Task`, `Agent`, `Workflow`, and `Project`.
+  - Specified the core API for task submission, agent registration, and status updates.
+- **Core Scheduling Engine:**
+  - Developed a robust priority queue and dependency tracking for task management.
+  - Created a basic agent state manager (`IDLE`, `BUSY`, `ERROR`).
 
 ## Phase 2: Intelligence and Observability
 
-**Objective:** Add monitoring and basic intelligent oversight.
+**Objective:** Add monitoring and intelligent oversight via a dedicated service.
+**Service:** **`QuantaLista-Advisor`**
 
-- **Design Monitoring and Alerting Mechanisms:**
-  - Implement comprehensive logging for all major events (task status changes, agent activity, errors).
-  - Develop a basic dashboard to visualize system state, active agents, and the task queue.
-  - Configure simple alerts for critical failures (e.g., unresponsive agents, persistent task failures).
-- **Implement Advisory and Alignment Modules:**
-  - Create a simple "Advisor" module that provides recommendations (e.g., suggest re-prioritizing a task that is blocking others).
-  - Implement basic checks to ensure agent actions align with overall workflow goals.
+- **Monitoring and Alerting:**
+  - The Advisor service will consume event streams from `QuantaLista-Core`.
+  - It will implement comprehensive logging and provide a basic dashboard for system state visualization.
+- **Advisory and Alignment Modules:**
+  - The service will provide recommendations (e.g., re-prioritizing tasks).
+  - It will perform checks to ensure agent actions align with workflow goals.
 
-## Phase 3: Advanced Coordination and User Control
+## Phase 3: User Interface and API Gateway
 
-**Objective:** Enhance agent collaboration and provide user-facing controls.
+**Objective:** Provide user-facing controls and a unified API.
+**Services:** **`QuantaLista-UI`** and **`QuantaLista-Gateway`**
 
-- **Integrate Multi-Agent Coordination:**
-  - Implement a message bus (e.g., RabbitMQ, Redis Pub/Sub) for inter-agent communication.
-  - Develop initial conflict resolution strategies (e.g., locking mechanisms for shared resources).
-- **Develop User Interface (UI):**
-  - Build a web-based UI for workflow visualization, manual task management, and viewing agent status.
-  - Implement user controls for manually assigning tasks and overriding priorities.
+- **API Gateway (`QuantaLista-Gateway`):**
+  - Develop a lightweight gateway to route traffic to the `Core` and `Advisor` services.
+  - Implement centralized concerns like authentication and rate limiting.
+- **User Interface (`QuantaLista-UI`):**
+  - Build a web-based UI that communicates with the API gateway.
+  - Provide workflow visualization, manual task management, and agent status views.

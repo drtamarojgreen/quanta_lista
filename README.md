@@ -12,43 +12,22 @@ It is designed for developers and researchers building sophisticated application
 
 ## Architecture Overview
 
-QuantaLista is built on a modular C++ architecture:
+QuantaLista is built on a distributed, multi-repository architecture. Each component is a distinct service, designed for independent development, deployment, and scaling.
 
-- **Coordinator**: The central engine that orchestrates the entire process.
-- **Scheduler**: The core component that handles task prioritization and dependency resolution.
-- **AgentManager**: Manages agent registration and state.
-- **Data Models**: Clear C++ classes for `Project`, `Workflow`, `Task`, and `Agent`.
+- **`QuantaLista-Core`**: The central engine that orchestrates the entire process. It contains the `Coordinator`, `Scheduler`, and `AgentManager`. This repository contains the core C++ application.
+- **`QuantaLista-Gateway`**: A lightweight API gateway that provides a unified entry point for all client interactions, routing requests to the appropriate downstream service.
+- **`QuantaLista-Advisor`**: A Python-based service that provides intelligent oversight, monitoring, and recommendations. It consumes data from the core engine to provide insights.
+- **`QuantaLista-UI`**: A web-based user interface for workflow visualization, manual task management, and viewing agent status.
 
 ## Getting Started
 
-The source code and related files are located in the `QuantaLista/` directory.
+This repository contains the documentation and overall architectural guidelines for the QuantaLista ecosystem. The source code for each service is located in its own repository.
 
-### Prerequisites
-- A C++ compiler that supports C++11 (e.g., g++, clang++).
-
-### Compilation
-Navigate to the `QuantaLista/` directory to run the compilation commands.
-
-**To compile the main application:**
-```bash
-g++ -std=c++11 -Isrc -o QuantaListaApp src/main.cpp src/QuantaLista.cpp
-```
-
-**To compile the unit tests:**
-```bash
-g++ -std=c++11 -Isrc -o run_tests test/tests.cpp src/QuantaLista.cpp
-```
-
-### Running the Application
-**To run the main simulation:**
-```bash
-./QuantaListaApp
-```
-
-**To run the unit tests:**
-```bash
-./run_tests
-```
+To get started, please refer to the `README.md` file in each of the following repositories:
+- `QuantaLista-Core`
+- `QuantaLista-Gateway`
+- `QuantaLista-Advisor`
+- `QuantaLista-UI`
 
 ## Example Usage
 
