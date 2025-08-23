@@ -9,6 +9,51 @@
 
 #include "cli.h"
 
+// --- Helper functions for logging enums ---
+std::string to_string(TaskStatus status) {
+    switch (status) {
+        case TaskStatus::Pending: return "Pending";
+        case TaskStatus::InProgress: return "InProgress";
+        case TaskStatus::Completed: return "Completed";
+        case TaskStatus::Failed: return "Failed";
+        default: return "Unknown";
+    }
+}
+
+std::string to_string(AgentState state) {
+    switch (state) {
+        case AgentState::IDLE: return "IDLE";
+        case AgentState::BUSY: return "BUSY";
+        case AgentState::ERROR: return "ERROR";
+        default: return "Unknown";
+    }
+}
+
+// --- LoggingSubscriber Class for Demonstration ---
+class LoggingSubscriber : public ISubscriber {
+public:
+    void onEvent(const Event& event) override {
+        std::cout << "[EVENT] ";
+        switch (event.type) {
+            case EventType::TaskCreated: {
+                const auto& e = static_cast<const TaskCreatedEvent&>(event);
+                std::cout << "TaskCreated: ID=" << e.task_id << ", Desc=\"" << e.description << "\"" << std::endl;
+                break;
+            }
+            case EventType::TaskStatusChanged: {
+                const auto& e = static_cast<const TaskStatusChangedEvent&>(event);
+                std::cout << "TaskStatusChanged: ID=" << e.task_id << ", NewStatus=" << to_string(e.new_status) << std::endl;
+                break;
+            }
+            case EventType::AgentStateChanged: {
+                const auto& e = static_cast<const AgentStateChangedEvent&>(event);
+                std::cout << "AgentStateChanged: ID=" << e.agent_id << ", NewState=" << to_string(e.new_state) << std::endl;
+                break;
+            }
+        }
+    }
+};
+
 int main(int argc, char* argv[]) {
     if (argc > 1) {
         std::string command = argv[1];
@@ -32,6 +77,15 @@ int main(int argc, char* argv[]) {
 
             // Initialize the Coordinator with the project
             Coordinator coordinator(project, "./queue");
+
+            // --- Register the Logging Subscriber ---
+            LoggingSubscriber logger;
+            Publisher& pub = coordinator.getEventPublisher();
+            pub.subscribe(EventType::TaskCreated, &logger);
+            pub.subscribe(EventType::TaskStatusChanged, &logger);
+            pub.subscribe(EventType::AgentStateChanged, &logger);
+            std::cout << "Logging subscriber registered." << std::endl;
+
 
             // Register a couple of agents
             coordinator.registerAgent(Agent("agent-001", "Researcher"));

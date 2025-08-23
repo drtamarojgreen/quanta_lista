@@ -94,14 +94,19 @@ public:
 #include <set>
 #include <functional>
 
+#include "pubsub.h"
+
+class Publisher; // Forward declaration
+
 class Scheduler {
 public:
-    Scheduler();
+    Scheduler(Publisher& pub);
     void submitTask(const Task& task);
     Task* getNextAvailableTask();
     void markTaskAsCompleted(const std::string& taskId);
 
 private:
+    Publisher& publisher;
     struct TaskComparator {
         const std::map<std::string, Task>* tasks_map;
 
@@ -134,12 +139,14 @@ public:
 
 class AgentManager {
 public:
+    explicit AgentManager(Publisher& pub);
     void registerAgent(const Agent& agent);
     Agent* getIdleAgent();
     void setAgentState(const std::string& agentId, AgentState newState);
     const Agent* getAgent(const std::string& agentId) const;
 
 private:
+    Publisher& publisher;
     std::map<std::string, Agent> agents;
 };
 
@@ -154,10 +161,13 @@ public:
     const Scheduler& getScheduler() const { return scheduler; }
     const AgentManager& getAgentManager() const { return agent_manager; }
 
+    Publisher& getEventPublisher() { return event_publisher; }
+
 public:
     void processPendingTasks();
 
 private:
+    Publisher event_publisher;
     Scheduler scheduler;
     AgentManager agent_manager;
     Project project;
@@ -166,5 +176,58 @@ private:
     std::filesystem::path completed_dir;
     std::filesystem::path failed_dir;
 };
+
+// --- Event System ---
+
+// Base Event structure for the publisher-subscriber model
+enum class EventType {
+    TaskCreated,
+    TaskStatusChanged,
+    AgentStateChanged
+};
+
+struct Event {
+    virtual ~Event() = default;
+    const EventType type;
+    const std::chrono::system_clock::time_point timestamp;
+
+protected:
+    Event(EventType t) : type(t), timestamp(std::chrono::system_clock::now()) {}
+};
+
+// Enum for Task Status, used in events
+enum class TaskStatus {
+    Pending,
+    InProgress,
+    Completed,
+    Failed
+};
+
+// --- Specific Event Structures ---
+
+struct TaskCreatedEvent : public Event {
+    const std::string task_id;
+    const std::string description;
+
+    TaskCreatedEvent(std::string id, std::string desc)
+        : Event(EventType::TaskCreated), task_id(std::move(id)), description(std::move(desc)) {}
+};
+
+struct TaskStatusChangedEvent : public Event {
+    const std::string task_id;
+    const TaskStatus new_status;
+
+    TaskStatusChangedEvent(std::string id, TaskStatus status)
+        : Event(EventType::TaskStatusChanged), task_id(std::move(id)), new_status(status) {}
+};
+
+struct AgentStateChangedEvent : public Event {
+    const std::string agent_id;
+    const AgentState new_state;
+
+    AgentStateChangedEvent(std::string id, AgentState state)
+        : Event(EventType::AgentStateChanged), agent_id(std::move(id)), new_state(state) {}
+};
+
 
 #endif // QUANTALISTA_H

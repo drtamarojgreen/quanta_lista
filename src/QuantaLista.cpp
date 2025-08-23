@@ -85,8 +85,11 @@ std::string to_json(const Task& task) {
 
 // --- AgentManager Class Implementation ---
 
+AgentManager::AgentManager(Publisher& pub) : publisher(pub) {}
+
 void AgentManager::registerAgent(const Agent& agent) {
     agents.emplace(agent.id, agent);
+    publisher.publish(AgentStateChangedEvent(agent.id, agent.state));
 }
 
 Agent* AgentManager::getIdleAgent() {
@@ -101,7 +104,10 @@ Agent* AgentManager::getIdleAgent() {
 void AgentManager::setAgentState(const std::string& agentId, AgentState newState) {
     auto it = agents.find(agentId);
     if (it != agents.end()) {
-        it->second.state = newState;
+        if (it->second.state != newState) {
+            it->second.state = newState;
+            publisher.publish(AgentStateChangedEvent(agentId, newState));
+        }
     }
 }
 
@@ -115,11 +121,13 @@ const Agent* AgentManager::getAgent(const std::string& agentId) const {
 
 // --- Scheduler Class Implementation ---
 
-Scheduler::Scheduler() : pending_tasks(TaskComparator{&tasks}) {}
+Scheduler::Scheduler(Publisher& pub) : publisher(pub), pending_tasks(TaskComparator{&tasks}) {}
 
 void Scheduler::submitTask(const Task& task) {
     tasks.emplace(task.task_id, task);
     pending_tasks.insert(task.task_id);
+    publisher.publish(TaskCreatedEvent(task.task_id, task.description));
+    publisher.publish(TaskStatusChangedEvent(task.task_id, TaskStatus::Pending));
 }
 
 bool Scheduler::areDependenciesMet(const Task& task) {
@@ -139,6 +147,7 @@ Task* Scheduler::getNextAvailableTask() {
             in_progress_task_ids.push_back(*it);
             auto task_ptr = &tasks.at(*it);
             pending_tasks.erase(it);
+            publisher.publish(TaskStatusChangedEvent(task_ptr->task_id, TaskStatus::InProgress));
             return task_ptr;
         }
     }
@@ -150,6 +159,7 @@ void Scheduler::markTaskAsCompleted(const std::string& taskId) {
     in_progress_task_ids.erase(std::remove(in_progress_task_ids.begin(), in_progress_task_ids.end(), taskId), in_progress_task_ids.end());
     // Add to completed tasks
     completed_task_ids.push_back(taskId);
+    publisher.publish(TaskStatusChangedEvent(taskId, TaskStatus::Completed));
 }
 
 #include <filesystem>
@@ -162,7 +172,10 @@ void Scheduler::markTaskAsCompleted(const std::string& taskId) {
 
 // --- Coordinator Class Implementation ---
 
-Coordinator::Coordinator(Project p, const std::string& queue_dir) : project(std::move(p)) {
+Coordinator::Coordinator(Project p, const std::string& queue_dir)
+    : project(std::move(p)),
+      scheduler(event_publisher),
+      agent_manager(event_publisher) {
     pending_dir = std::filesystem::path(queue_dir) / "pending";
     in_progress_dir = std::filesystem::path(queue_dir) / "in_progress";
     completed_dir = std::filesystem::path(queue_dir) / "completed";
