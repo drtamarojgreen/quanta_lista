@@ -4,7 +4,9 @@
 #include <vector>
 #include <algorithm>
 #include <map>
-#include "QuantaLista.h" // For Event base class and EventType enum
+
+enum class EventType;
+struct Event;
 
 // Subscriber interface
 class ISubscriber {

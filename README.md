@@ -42,3 +42,21 @@ The output will show the step-by-step process of tasks being assigned, processed
 ## Contributing
 
 We welcome contributions! Please see the documents in the `docs/` directory for more information on the development plan and future enhancements.
+
+## Testing
+
+This repository now includes a lightweight test framework in `test/test_framework.h` plus two executable suites:
+
+- `test/unit_tests.cpp` for unit-style tests
+- `test/bdd_tests.cpp` for Gherkin-style behaviour tests
+
+Build and run from the repository root:
+
+```bash
+g++ -std=c++17 -I./src test/unit_tests.cpp src/QuantaLista.cpp src/pubsub.cpp src/cli.cpp -o test/run_unit_tests
+./test/run_unit_tests
+
+g++ -std=c++17 -I./src test/bdd_tests.cpp src/QuantaLista.cpp src/pubsub.cpp src/cli.cpp -o test/run_bdd_tests
+./test/run_bdd_tests
+```
+

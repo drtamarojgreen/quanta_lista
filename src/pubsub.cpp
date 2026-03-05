@@ -1,4 +1,5 @@
 #include "pubsub.h"
+#include "QuantaLista.h"
 
 void Publisher::subscribe(EventType eventType, ISubscriber* subscriber) {
     if (subscriber) {
