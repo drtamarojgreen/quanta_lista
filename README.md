@@ -56,7 +56,7 @@ Build and run from the repository root:
 g++ -std=c++17 -I./src test/unit_tests.cpp src/QuantaLista.cpp src/pubsub.cpp src/cli.cpp -o test/run_unit_tests
 ./test/run_unit_tests
 
-g++ -std=c++17 -I./src test/bdd_tests.cpp src/QuantaLista.cpp src/pubsub.cpp src/cli.cpp -o test/run_bdd_tests
+g++ -std=c++17 -I./src -I./test test/bdd_tests.cpp test/feature/*.cpp test/step/*.cpp src/QuantaLista.cpp src/pubsub.cpp src/cli.cpp -o test/run_bdd_tests
 ./test/run_bdd_tests
 ```
 

@@ -1,0 +1,4 @@
+#ifndef MULTI_AGENT_COORDINATION_FEATURE_H
+#define MULTI_AGENT_COORDINATION_FEATURE_H
+void feature_multi_agent_coordination();
+#endif
