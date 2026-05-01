@@ -60,6 +60,19 @@ Task from_json(const std::string& json_string) {
     task.dependencies = extract_string_vector(json_string, "dependencies");
     task.component = extract_string(json_string, "component");
     task.max_runtime_sec = extract_int(json_string, "max_runtime_sec");
+
+    task.date = extract_string(json_string, "date");
+    task.time = extract_string(json_string, "time");
+    task.platform = extract_string(json_string, "platform");
+    task.service = extract_string(json_string, "service");
+    // Simple boolean extraction
+    task.confirmed = (json_string.find("\"confirmed\": true") != std::string::npos);
+    task.overlapping_task_ids = extract_string_vector(json_string, "overlapping_task_ids");
+    task.first_name = extract_string(json_string, "first_name");
+    task.last_name = extract_string(json_string, "last_name");
+    task.contact_info = extract_string(json_string, "contact_info");
+    task.anonymous_id = extract_string(json_string, "anonymous_id");
+
     return task;
 }
 
@@ -77,9 +90,73 @@ std::string to_json(const Task& task) {
     }
     json_string += "],";
     json_string += "\"component\": \"" + task.component + "\",";
-    json_string += "\"max_runtime_sec\": " + std::to_string(task.max_runtime_sec);
+    json_string += "\"max_runtime_sec\": " + std::to_string(task.max_runtime_sec) + ",";
+
+    json_string += "\"date\": \"" + task.date + "\",";
+    json_string += "\"time\": \"" + task.time + "\",";
+    json_string += "\"platform\": \"" + task.platform + "\",";
+    json_string += "\"service\": \"" + task.service + "\",";
+    json_string += "\"confirmed\": " + std::string(task.confirmed ? "true" : "false") + ",";
+    json_string += "\"overlapping_task_ids\": [";
+    for (size_t i = 0; i < task.overlapping_task_ids.size(); ++i) {
+        json_string += "\"" + task.overlapping_task_ids[i] + "\"";
+        if (i < task.overlapping_task_ids.size() - 1) {
+            json_string += ",";
+        }
+    }
+    json_string += "],";
+    json_string += "\"first_name\": \"" + task.first_name + "\",";
+    json_string += "\"last_name\": \"" + task.last_name + "\",";
+    json_string += "\"contact_info\": \"" + task.contact_info + "\",";
+    json_string += "\"anonymous_id\": \"" + task.anonymous_id + "\"";
+
     json_string += "}";
     return json_string;
+}
+
+std::string to_json(const Schedule& schedule) {
+    std::string json_string = "{";
+    json_string += "\"schedule_id\": \"" + schedule.schedule_id + "\",";
+    json_string += "\"name\": \"" + schedule.name + "\",";
+    json_string += "\"tasks\": [";
+    for (size_t i = 0; i < schedule.tasks.size(); ++i) {
+        json_string += to_json(schedule.tasks[i]);
+        if (i < schedule.tasks.size() - 1) {
+            json_string += ",";
+        }
+    }
+    json_string += "]";
+    json_string += "}";
+    return json_string;
+}
+
+Schedule schedule_from_json(const std::string& json_string) {
+    Schedule schedule;
+    schedule.schedule_id = extract_string(json_string, "schedule_id");
+    schedule.name = extract_string(json_string, "name");
+
+    std::string tasks_key = "\"tasks\": [";
+    size_t start = json_string.find(tasks_key);
+    if (start != std::string::npos) {
+        start += tasks_key.length();
+        int brace_count = 0;
+        size_t task_start = std::string::npos;
+        for (size_t i = start; i < json_string.length(); ++i) {
+            if (json_string[i] == '{') {
+                if (brace_count == 0) task_start = i;
+                brace_count++;
+            } else if (json_string[i] == '}') {
+                brace_count--;
+                if (brace_count == 0 && task_start != std::string::npos) {
+                    schedule.tasks.push_back(from_json(json_string.substr(task_start, i - task_start + 1)));
+                    task_start = std::string::npos;
+                }
+            } else if (json_string[i] == ']' && brace_count == 0) {
+                break;
+            }
+        }
+    }
+    return schedule;
 }
 
 
@@ -160,6 +237,39 @@ void Scheduler::markTaskAsCompleted(const std::string& taskId) {
     // Add to completed tasks
     completed_task_ids.push_back(taskId);
     publisher.publish(TaskStatusChangedEvent(taskId, TaskStatus::Completed));
+}
+
+void Scheduler::setSchedule(const Schedule& schedule) {
+    current_schedule = schedule;
+    for (const auto& task : current_schedule.tasks) {
+        submitTask(task);
+    }
+}
+
+void Scheduler::saveSchedule(const std::string& filepath) {
+    std::ofstream file(filepath);
+    file << to_json(current_schedule);
+    file.close();
+}
+
+void Scheduler::loadSchedule(const std::string& filepath) {
+    std::ifstream file(filepath);
+    if (file.is_open()) {
+        std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        setSchedule(schedule_from_json(content));
+        file.close();
+    }
+}
+
+void Scheduler::removeTask(const std::string& taskId) {
+    auto it = std::remove_if(current_schedule.tasks.begin(), current_schedule.tasks.end(),
+        [&taskId](const Task& t) { return t.task_id == taskId; });
+    current_schedule.tasks.erase(it, current_schedule.tasks.end());
+
+    // Also remove from internal tracking
+    tasks.erase(taskId);
+    pending_tasks.erase(taskId);
+    in_progress_task_ids.erase(std::remove(in_progress_task_ids.begin(), in_progress_task_ids.end(), taskId), in_progress_task_ids.end());
 }
 
 #include <filesystem>

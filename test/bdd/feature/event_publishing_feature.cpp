@@ -1,5 +1,5 @@
 #include "event_publishing_feature.h"
-#include "../test_framework.h"
+#include "../../test_framework.h"
 #include "../step/event_publishing_steps.h"
 
 void feature_event_publishing() {

@@ -1,0 +1,10 @@
+# Scheduler Production Facts
+Situation: Standard Neuroplasticity Path
+
+# Facts
+Is InitialTaskCount = 0
+Is TaskPriority = high
+Is DefaultRuntime = 10
+Is LeapYearDate = 2024-02-29
+Is NonLeapYearDate = 2023-02-28
+Is InvalidDate = 2025-13-45

@@ -29,6 +29,18 @@ public:
     std::string component;
     int max_runtime_sec;
 
+    // Greenhouse JS Parity Fields
+    std::string date;
+    std::string time;
+    std::string platform;
+    std::string service;
+    bool confirmed = false;
+    std::vector<std::string> overlapping_task_ids;
+    std::string first_name;
+    std::string last_name;
+    std::string contact_info;
+    std::string anonymous_id;
+
     // Default constructor
     Task() = default;
 
@@ -40,6 +52,24 @@ public:
 
 Task from_json(const std::string& json_string);
 std::string to_json(const Task& task);
+
+// Represents a collection of tasks forming a plan
+class Schedule {
+public:
+    std::string schedule_id;
+    std::string name;
+    std::vector<Task> tasks;
+
+    Schedule() = default;
+    Schedule(std::string id, std::string name) : schedule_id(std::move(id)), name(std::move(name)) {}
+
+    void addTask(const Task& task) {
+        tasks.push_back(task);
+    }
+};
+
+std::string to_json(const Schedule& schedule);
+Schedule schedule_from_json(const std::string& json_string);
 
 // Represents an agent that can execute tasks
 class Agent {
@@ -105,7 +135,15 @@ public:
     Task* getNextAvailableTask();
     void markTaskAsCompleted(const std::string& taskId);
 
+    // Schedule Management
+    void setSchedule(const Schedule& schedule);
+    const Schedule& getSchedule() const { return current_schedule; }
+    void saveSchedule(const std::string& filepath);
+    void loadSchedule(const std::string& filepath);
+    void removeTask(const std::string& taskId);
+
 private:
+    Schedule current_schedule;
     Publisher& publisher;
     struct TaskComparator {
         const std::map<std::string, Task>* tasks_map;

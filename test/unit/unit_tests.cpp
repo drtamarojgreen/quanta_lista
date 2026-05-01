@@ -1,5 +1,5 @@
-#include "test_framework.h"
-#include "cli.h"
+#include "../test_framework.h"
+#include "../../src/cli.h"
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -210,6 +210,38 @@ void test_json_roundtrip_single_dependency() {
     Assert::equal(restored.dependencies[0], std::string("sole"), "Dependency ID");
 }
 
+void test_schedule_json_roundtrip() {
+    Schedule original("sch1", "Path of Neuroplasticity");
+    original.addTask(Task("t1", "Step 1", "high", {}, "c1", 10));
+    original.addTask(Task("t2", "Step 2", "medium", {"t1"}, "c2", 20));
+
+    Schedule restored = schedule_from_json(to_json(original));
+    Assert::equal(restored.schedule_id, original.schedule_id, "schedule_id");
+    Assert::equal(restored.name, original.name, "name");
+    Assert::size_equals(restored.tasks, size_t(2), "task count");
+    Assert::equal(restored.tasks[0].task_id, std::string("t1"), "first task_id");
+    Assert::equal(restored.tasks[1].task_id, std::string("t2"), "second task_id");
+}
+
+void test_scheduler_load_save_schedule() {
+    Publisher pub;
+    Scheduler scheduler(pub);
+    Schedule sch("sch2", "Persistent Schedule");
+    sch.addTask(Task("p1", "Task 1", "high", {}, "c", 5));
+    scheduler.setSchedule(sch);
+
+    std::string path = "test_schedule.json";
+    scheduler.saveSchedule(path);
+    Assert::is_true(std::filesystem::exists(path), "Schedule file should be created");
+
+    Scheduler scheduler2(pub);
+    scheduler2.loadSchedule(path);
+    Assert::equal(scheduler2.getSchedule().schedule_id, std::string("sch2"), "Loaded schedule_id");
+    Assert::size_equals(scheduler2.getSchedule().tasks, size_t(1), "Loaded task count");
+
+    std::filesystem::remove(path);
+}
+
 void test_cli_add_task_creates_json_file() {
     system("rm -rf ./queue");
     char* argv[] = {(char*)"quantalista", (char*)"add", (char*)"task1", (char*)"Test Task", (char*)"high",
@@ -301,6 +333,10 @@ int main() {
     UnitTest::run(test_json_roundtrip_full_task, "full task round-trips through JSON");
     UnitTest::run(test_json_roundtrip_no_dependencies, "task with no deps round-trips through JSON");
     UnitTest::run(test_json_roundtrip_single_dependency, "task with one dep round-trips through JSON");
+    UnitTest::run(test_schedule_json_roundtrip, "schedule round-trips through JSON");
+
+    UnitTest::section("Scheduler Persistence");
+    UnitTest::run(test_scheduler_load_save_schedule, "scheduler can load and save schedules");
 
     UnitTest::section("CLI");
     UnitTest::run(test_cli_add_task_creates_json_file, "add task creates .json file in pending/");

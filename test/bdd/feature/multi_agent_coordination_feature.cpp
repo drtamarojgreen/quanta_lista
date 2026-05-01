@@ -1,5 +1,5 @@
 #include "multi_agent_coordination_feature.h"
-#include "../test_framework.h"
+#include "../../test_framework.h"
 #include "../step/multi_agent_coordination_steps.h"
 
 void feature_multi_agent_coordination() {
