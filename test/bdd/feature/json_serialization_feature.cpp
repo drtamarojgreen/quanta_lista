@@ -1,5 +1,5 @@
 #include "json_serialization_feature.h"
-#include "../test_framework.h"
+#include "../../test_framework.h"
 #include "../step/json_serialization_steps.h"
 
 void feature_json_serialization() {

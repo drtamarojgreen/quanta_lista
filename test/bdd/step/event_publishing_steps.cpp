@@ -1,5 +1,5 @@
 #include "event_publishing_steps.h"
-#include "../test_framework.h"
+#include "../../test_framework.h"
 
 namespace EventPublishingSteps {
 void one_agent_state_changed_on_register() {

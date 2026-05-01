@@ -8,6 +8,7 @@
 #include <filesystem>
 
 #include "cli.h"
+#include "SchedulerUI.h"
 
 // --- Helper functions for logging enums ---
 std::string to_string(TaskStatus status) {
@@ -29,7 +30,7 @@ std::string to_string(AgentState state) {
     }
 }
 
-// --- LoggingSubscriber Class for Demonstration ---
+// --- LoggingSubscriber Class for Event Observation ---
 class LoggingSubscriber : public ISubscriber {
 public:
     void onEvent(const Event& event) override {
@@ -92,10 +93,58 @@ int main(int argc, char* argv[]) {
             coordinator.registerAgent(Agent("agent-002", "Writer"));
 
             coordinator.run();
+        } else if (command == "ui") {
+            Greenhouse::UI::SchedulerUI ui;
+            std::string view = (argc > 2) ? argv[2] : "patient";
+
+            std::cout << ui.renderNotification("Entering Greenhouse Scheduler UI", "info") << std::endl;
+            std::cout << ui.renderViewSelector(view) << std::endl;
+
+            if (view == "patient") {
+                std::cout << ui.renderPatientForm() << std::endl;
+                std::cout << ui.renderPatientCalendar(2025, 5) << std::endl;
+                std::cout << ui.renderInstructionsPanel() << std::endl;
+            } else if (view == "dashboard") {
+                Publisher pub;
+                Schedule sch("sch_demo", "Demo Schedule");
+                std::cout << ui.renderDashboardWeeklySchedule(sch, "2025-05-01") << std::endl;
+                std::cout << ui.renderConflictList({"Conflict 1", "Conflict 2"}) << std::endl;
+            } else if (view == "admin") {
+                std::cout << ui.renderAdminSettingsForm() << std::endl;
+            }
         } else if (command == "add") {
             addTask(argc, argv);
         } else if (command == "list") {
             listTasks();
+        } else if (command == "schedule") {
+            if (argc > 3) {
+                std::string subCommand = argv[2];
+                std::string path = argv[3];
+                Publisher pub;
+                Scheduler scheduler(pub);
+                if (subCommand == "save") {
+                    Schedule sch("cli_sch", "CLI Schedule");
+                    std::filesystem::path pending_dir("./queue/pending");
+                    if (std::filesystem::exists(pending_dir)) {
+                        for (const auto& entry : std::filesystem::directory_iterator(pending_dir)) {
+                            if (entry.path().extension() == ".json") {
+                                std::ifstream f(entry.path());
+                                std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+                                sch.addTask(from_json(content));
+                            }
+                        }
+                    }
+                    scheduler.setSchedule(sch);
+                    scheduler.saveSchedule(path);
+                    std::cout << "Schedule saved to " << path << ". Saved " << sch.tasks.size() << " tasks." << std::endl;
+                } else if (subCommand == "load") {
+                    scheduler.loadSchedule(path);
+                    std::cout << "Schedule loaded from " << path << ". Task count: "
+                              << scheduler.getSchedule().tasks.size() << std::endl;
+                }
+            } else {
+                std::cout << "Usage: quantalista schedule <save|load> <path>" << std::endl;
+            }
         }
         else {
             std::cerr << "Unknown command: " << command << std::endl;
@@ -107,6 +156,8 @@ int main(int argc, char* argv[]) {
         std::cout << "  daemon      - Run the QuantaLista daemon" << std::endl;
         std::cout << "  add         - Add a new task to the queue" << std::endl;
         std::cout << "  list        - List all tasks in the queue" << std::endl;
+        std::cout << "  schedule    - Save or load a schedule (save|load <path>)" << std::endl;
+        std::cout << "  ui [view]   - Display the Greenhouse Scheduler UI (patient|dashboard|admin)" << std::endl;
     }
 
     return 0;

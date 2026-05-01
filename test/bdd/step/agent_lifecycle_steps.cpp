@@ -1,5 +1,5 @@
 #include "agent_lifecycle_steps.h"
-#include "../test_framework.h"
+#include "../../test_framework.h"
 
 namespace AgentLifecycleSteps {
 void registered_agent_is_idle() {
