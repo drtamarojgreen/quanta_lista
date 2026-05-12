@@ -40,6 +40,13 @@
 - [x] 125. Correlation identifiers.
 - [x] 132. Statistics counters.
 - [x] 133. Rolling average completion time.
+- [x] 4. Dependency-aware task ordering (Topological Sort).
+- [x] 25. Import duplicate detection.
+- [x] 32. Field-level validation.
+- [x] 33. Normalized UTC timestamps.
+- [x] 34. Human-readable timestamp rendering.
+- [x] 35. Deterministic export.
+- [x] 62-63. Expanded CLI (task/agent subcommands).
 
 ## Security & Performance (161-200)
 - [x] 163. Path traversal checks.

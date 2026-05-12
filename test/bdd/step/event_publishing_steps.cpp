@@ -98,6 +98,8 @@ void coordinator_event_sequence() {
     coordinator.registerAgent(Agent("bdd_agent", "BDDAgent"));
     coordinator.run();
 
+    system("rm -rf ./queue_bdd_seq");
+
     Assert::size_equals(sub.received_events, size_t(11), "Expected 11 events total");
     Assert::equal(sub.count_of<AgentStateChangedEvent>(), 5, "Expected 5 AgentStateChanged events");
     Assert::equal(sub.count_of<TaskStatusChangedEvent>(), 6,

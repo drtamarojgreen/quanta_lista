@@ -48,6 +48,42 @@ void validate_scheduler_logic(const std::map<std::string, std::string>& facts) {
             std::cout << "result_LabelValue = " << l << std::endl;
         }
     }
+
+    if (facts.count("SortInput")) {
+        // [t3:t2, t2:t1, t1:]
+        std::vector<Task> tasks;
+        tasks.emplace_back("t3", "d", "m", std::vector<std::string>{"t2"}, "c", 1);
+        tasks.emplace_back("t1", "d", "m", std::vector<std::string>{}, "c", 1);
+        tasks.emplace_back("t2", "d", "m", std::vector<std::string>{"t1"}, "c", 1);
+
+        auto sorted = scheduler.getTopologicallySortedTasks(tasks);
+        std::cout << "result_SortOrder = ";
+        for (size_t i = 0; i < sorted.size(); ++i) {
+            std::cout << sorted[i].task_id << (i == sorted.size() - 1 ? "" : ",");
+        }
+        std::cout << std::endl;
+    }
+
+    if (facts.count("InvalidTaskID")) {
+        Task t("", "desc", "low", {}, "c", 1);
+        std::cout << "result_ValidateEmptyID = " << (scheduler.validateTask(t) ? "VALID" : "INVALID") << std::endl;
+    }
+
+    if (facts.count("ValidTaskID") && facts.count("ValidTaskDesc")) {
+        Task t(facts.at("ValidTaskID"), facts.at("ValidTaskDesc"), "low", {}, "c", 1);
+        std::cout << "result_ValidateValidTask = " << (scheduler.validateTask(t) ? "VALID" : "INVALID") << std::endl;
+    }
+
+    if (facts.count("DuplicateID")) {
+        std::string id = facts.at("DuplicateID");
+        Task t1(id, "first", "low", {}, "c", 1);
+        scheduler.submitTask(t1);
+
+        std::string json = "{\"name\": \"dup\", \"schedule_id\": \"s1\", \"tasks\": [{\"task_id\": \"" + id + "\", \"description\": \"second\"}]}";
+        scheduler.importFromJSON(json);
+
+        std::cout << "result_DuplicateDetectedCount = " << scheduler.getSchedule().tasks.size() << std::endl;
+    }
 }
 
 int main(int argc, char* argv[]) {

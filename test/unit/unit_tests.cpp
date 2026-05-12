@@ -248,6 +248,7 @@ void test_cli_add_task_creates_json_file() {
                     (char*)"test_comp", (char*)"10", (char*)"dep1,dep2"};
     addTask(8, argv);
     Assert::is_true(std::filesystem::exists("./queue/pending/task1.json"), "task1.json should exist in pending queue");
+    system("rm -rf ./queue");
 }
 
 void test_cli_list_tasks_shows_pending_file() {
@@ -261,6 +262,7 @@ void test_cli_list_tasks_shows_pending_file() {
     std::cout.rdbuf(old);
 
     Assert::is_true(buf.str().find("task1.json") != std::string::npos, "list output should include task1.json");
+    system("rm -rf ./queue");
 }
 
 void test_daemon_runs_to_completion_single_agent() {
@@ -278,6 +280,7 @@ void test_daemon_runs_to_completion_single_agent() {
 
     const auto& completed = coordinator.getScheduler().getCompletedTaskIds();
     Assert::size_equals(completed, size_t(3), "All 3 tasks should complete");
+    system("rm -rf ./queue_unit_daemon");
 }
 
 void test_daemon_completes_priority_and_dependency_order() {
@@ -300,6 +303,36 @@ void test_daemon_completes_priority_and_dependency_order() {
     Assert::equal(c[1], std::string("t4"), "2nd: high-priority dependent task (after t2)");
     Assert::equal(c[2], std::string("t3"), "3rd: medium-priority task");
     Assert::equal(c[3], std::string("t1"), "4th: low-priority task");
+    system("rm -rf ./queue_unit_order");
+}
+
+void test_topological_sort() {
+    Publisher pub;
+    Scheduler scheduler(pub);
+    std::vector<Task> tasks;
+    tasks.emplace_back("t3", "Task 3", "medium", std::vector<std::string>{"t2"}, "c", 1);
+    tasks.emplace_back("t1", "Task 1", "high", std::vector<std::string>{}, "c", 1);
+    tasks.emplace_back("t2", "Task 2", "high", std::vector<std::string>{"t1"}, "c", 1);
+
+    std::vector<Task> sorted = scheduler.getTopologicallySortedTasks(tasks);
+    Assert::equal((int)sorted.size(), 3, "Wrong number of sorted tasks");
+    Assert::equal(sorted[0].task_id, std::string("t1"), "First task should be t1");
+    Assert::equal(sorted[1].task_id, std::string("t2"), "Second task should be t2");
+    Assert::equal(sorted[2].task_id, std::string("t3"), "Third task should be t3");
+}
+
+void test_import_duplicate_detection() {
+    Publisher pub;
+    Scheduler scheduler(pub);
+    Task t1("t1", "Task 1", "high", {}, "c", 1);
+    scheduler.submitTask(t1);
+
+    std::string json = "{\"name\": \"Duplicate Schedule\", \"schedule_id\": \"sch_dup\", \"tasks\": [{\"task_id\": \"t1\", \"description\": \"Task 1 Duplicate\", \"priority\": \"low\"}]}";
+    scheduler.importFromJSON(json);
+
+    // After import, tasks should still contain only one t1 (the original)
+    Assert::equal(scheduler.getSchedule().tasks.size(), (size_t)1, "Should not have imported duplicate task into schedule");
+    Assert::equal((int)scheduler.getTaskStatus("t1") == (int)TaskStatus::Pending, true, "Original task should remain pending");
 }
 
 int main() {
@@ -345,6 +378,10 @@ int main() {
     UnitTest::section("Coordinator / Daemon");
     UnitTest::run(test_daemon_runs_to_completion_single_agent, "daemon completes all tasks (single agent)");
     UnitTest::run(test_daemon_completes_priority_and_dependency_order, "daemon respects priority + dependency order");
+
+    UnitTest::section("Enhancements");
+    UnitTest::run(test_topological_sort, "topological sort respects dependencies");
+    UnitTest::run(test_import_duplicate_detection, "import detects duplicate task IDs");
 
     TestRegistry::print_summary();
     return TestRegistry::failed_count() > 0 ? 1 : 0;
