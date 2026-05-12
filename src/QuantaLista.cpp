@@ -154,12 +154,18 @@ std::string to_json(const Task& task) {
 
 std::string to_json(const Schedule& schedule) {
     std::string json_string = "{";
-    json_string += "\"schedule_id\": \"" + schedule.schedule_id + "\",";
     json_string += "\"name\": \"" + schedule.name + "\",";
+    json_string += "\"schedule_id\": \"" + schedule.schedule_id + "\",";
     json_string += "\"tasks\": [";
-    for (size_t i = 0; i < schedule.tasks.size(); ++i) {
-        json_string += to_json(schedule.tasks[i]);
-        if (i < schedule.tasks.size() - 1) {
+
+    std::vector<Task> sorted_tasks = schedule.tasks;
+    std::sort(sorted_tasks.begin(), sorted_tasks.end(), [](const Task& a, const Task& b) {
+        return a.task_id < b.task_id;
+    });
+
+    for (size_t i = 0; i < sorted_tasks.size(); ++i) {
+        json_string += to_json(sorted_tasks[i]);
+        if (i < sorted_tasks.size() - 1) {
             json_string += ",";
         }
     }
@@ -427,7 +433,8 @@ void Scheduler::setSchedule(const Schedule& schedule) {
 
     current_schedule = schedule;
     logEvent("INFO", "Setting new schedule: " + schedule.name);
-    for (const auto& task : current_schedule.tasks) {
+    std::vector<Task> sorted = getTopologicallySortedTasks(current_schedule.tasks);
+    for (const auto& task : sorted) {
         submitTask(task);
     }
 }
@@ -603,6 +610,39 @@ void Scheduler::agePriorities() {
     }
 }
 
+std::vector<Task> Scheduler::getTopologicallySortedTasks(const std::vector<Task>& tasks_to_sort) const {
+    std::map<std::string, Task> task_map;
+    for (const auto& t : tasks_to_sort) task_map[t.task_id] = t;
+
+    std::vector<Task> sorted;
+    std::map<std::string, int> visit; // 0: unvisited, 1: visiting, 2: visited
+
+    std::function<void(const std::string&)> visit_node = [&](const std::string& id) {
+        if (visit[id] == 1) {
+            logEvent("ERROR", "Cycle detected in topological sort at task " + id);
+            return;
+        }
+        if (visit[id] == 0) {
+            visit[id] = 1;
+            if (task_map.count(id)) {
+                for (const auto& dep : task_map[id].dependencies) {
+                    visit_node(dep);
+                }
+                sorted.push_back(task_map[id]);
+            }
+            visit[id] = 2;
+        }
+    };
+
+    for (const auto& t : tasks_to_sort) {
+        if (visit[t.task_id] == 0) {
+            visit_node(t.task_id);
+        }
+    }
+
+    return sorted;
+}
+
 std::string Scheduler::getCachedCalculation(const std::string& key) {
     if (calculation_cache.count(key)) return calculation_cache[key];
     return "";
@@ -653,7 +693,18 @@ std::string Scheduler::exportToJSON() const {
 }
 
 void Scheduler::importFromJSON(const std::string& json) {
-    setSchedule(schedule_from_json(json));
+    Schedule schedule = schedule_from_json(json);
+    for (const auto& task : schedule.tasks) {
+        if (tasks.count(task.task_id)) {
+            logEvent("WARNING", "Import duplicate detected: " + task.task_id + ". Skipping.");
+            continue;
+        }
+        if (!validateTask(task)) {
+            logEvent("ERROR", "Field-level validation failed for task: " + task.task_id);
+            continue;
+        }
+        submitTask(task);
+    }
 }
 
 std::string Scheduler::exportToLineDelimitedJSON() const {
@@ -693,7 +744,7 @@ void Scheduler::shutdown() {
     logEvent("INFO", "State saved to shutdown_state.json");
 }
 
-void Scheduler::logEvent(const std::string& level, const std::string& message) {
+void Scheduler::logEvent(const std::string& level, const std::string& message) const {
     auto now = std::chrono::system_clock::now();
     auto in_time_t = std::chrono::system_clock::to_time_t(now);
 
@@ -716,6 +767,28 @@ double Scheduler::getRollingAverageCompletionTime() const {
     double sum = 0;
     for (double t : completion_times) sum += t;
     return sum / completion_times.size();
+}
+
+bool Scheduler::validateTask(const Task& task) const {
+    if (task.task_id.empty()) {
+        logEvent("ERROR", "Validation failed: task_id is empty.");
+        return false;
+    }
+    if (task.description.empty()) {
+        logEvent("ERROR", "Validation failed: description is empty.");
+        return false;
+    }
+    return true;
+}
+
+std::string Scheduler::renderHumanReadableTimestamp(const std::string& utc_timestamp) const {
+    if (utc_timestamp.empty()) return "N/A";
+    // For now, just strip " UTC" and return, but could be expanded to local time conversion
+    size_t pos = utc_timestamp.find(" UTC");
+    if (pos != std::string::npos) {
+        return utc_timestamp.substr(0, pos);
+    }
+    return utc_timestamp;
 }
 
 bool Scheduler::isValidPath(const std::string& path) {

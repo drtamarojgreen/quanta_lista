@@ -94,8 +94,33 @@ void handleCommand(int argc, char* argv[]) {
     else if (cmd == "agent") {
         if (argc > 3 && std::string(argv[2]) == "register") {
              std::cout << "Registering agent: " << argv[3] << std::endl;
+        } else if (argc > 3 && std::string(argv[2]) == "disable") {
+             std::cout << "Disabling agent: " << argv[3] << std::endl;
+             Publisher pub;
+             AgentManager am(pub);
+             am.disableAgent(argv[3]);
+        } else if (argc > 3 && std::string(argv[2]) == "enable") {
+             std::cout << "Enabling agent: " << argv[3] << std::endl;
+             Publisher pub;
+             AgentManager am(pub);
+             am.enableAgent(argv[3]);
         } else {
              std::cout << "Listing agents..." << std::endl;
+        }
+    }
+    else if (cmd == "task") {
+        if (argc > 3 && std::string(argv[2]) == "archive") {
+            std::cout << "Archiving task: " << argv[3] << std::endl;
+            Publisher pub;
+            Scheduler s(pub);
+            s.archiveTask(argv[3]);
+        } else if (argc > 3 && std::string(argv[2]) == "restore") {
+            std::cout << "Restoring task: " << argv[3] << std::endl;
+            Publisher pub;
+            Scheduler s(pub);
+            s.restoreTask(argv[3]);
+        } else {
+            std::cout << "Task subcommand not recognized or missing ID." << std::endl;
         }
     }
     else if (cmd == "workflow") {

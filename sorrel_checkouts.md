@@ -12,8 +12,13 @@
     - Structured (JSON) Logging.
     - Path Traversal Security Checks.
     - Schema Versioning and Migration hooks.
-    - Functional CLI with subcommand routing.
+- [x] Functional CLI with subcommand routing (added agent disable/enable, task archive/restore).
     - Functional Terminal Dashboard renderer.
+- [x] Dependency-aware task ordering using topological sort.
+- [x] Field-level validation for tasks (ID and description).
+- [x] Import duplicate detection in Scheduler.
+- [x] Normalized UTC creation timestamps and human-readable rendering.
+- [x] Deterministic JSON export for schedules.
 
 Verified with Unit, BDD, and SDD test suites.
 No binary artifacts in the repository.

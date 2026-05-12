@@ -227,6 +227,9 @@ public:
     // Enhancement #3: Aging
     void agePriorities();
 
+    // Enhancement #4: Topological Sort
+    std::vector<Task> getTopologicallySortedTasks(const std::vector<Task>& tasks_to_sort) const;
+
     // Enhancement #40: Full-text search
     std::vector<Task> searchTasks(const std::string& query);
 
@@ -258,12 +261,18 @@ public:
     void shutdown();
 
     // Enhancement #121: Structured Logging
-    void logEvent(const std::string& level, const std::string& message);
+    void logEvent(const std::string& level, const std::string& message) const;
 
     // Enhancement #132: Statistics
     int getCompletedTaskCount() const;
     int getFailedTaskCount() const;
     double getRollingAverageCompletionTime() const;
+
+    // Enhancement #32: Field-level validation
+    bool validateTask(const Task& task) const;
+
+    // Enhancement #34: Human-readable timestamp
+    std::string renderHumanReadableTimestamp(const std::string& utc_timestamp) const;
 
     // Enhancement #163: Path Traversal Check
     bool isValidPath(const std::string& path);
