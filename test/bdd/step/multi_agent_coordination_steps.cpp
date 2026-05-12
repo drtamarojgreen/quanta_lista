@@ -13,6 +13,7 @@ void single_task_single_agent_completes() {
     coordinator.registerAgent(Agent("a1", "Solo"));
     coordinator.run();
     Assert::size_equals(coordinator.getScheduler().getCompletedTaskIds(), size_t(1), "One task should complete");
+    system("rm -rf ./queue_bdd_solo");
 }
 
 void independent_tasks_complete_hml() {
@@ -33,6 +34,7 @@ void independent_tasks_complete_hml() {
     Assert::equal(c[0], std::string("t_hi"), "1st: high priority");
     Assert::equal(c[1], std::string("t_me"), "2nd: medium priority");
     Assert::equal(c[2], std::string("t_lo"), "3rd: low priority");
+    system("rm -rf ./queue_bdd_prio");
 }
 
 void chain_completes_all_tasks() {
@@ -51,6 +53,7 @@ void chain_completes_all_tasks() {
     coordinator.run();
 
     Assert::size_equals(coordinator.getScheduler().getCompletedTaskIds(), size_t(4), "All 4 tasks must complete");
+    system("rm -rf ./queue_bdd_chain");
 }
 
 void chain_respects_predecessors() {
@@ -79,6 +82,7 @@ void chain_respects_predecessors() {
     Assert::is_true(pos("t1") < pos("t2"), "t1 must complete before t2");
     Assert::is_true(pos("t2") < pos("t3"), "t2 must complete before t3");
     Assert::is_true(pos("t3") < pos("t4"), "t3 must complete before t4");
+    system("rm -rf ./queue_bdd_chain2");
 }
 
 void mixed_priority_dependencies_ordered() {
@@ -101,5 +105,6 @@ void mixed_priority_dependencies_ordered() {
     Assert::equal(c[1], std::string("t2"), "2nd: t2 (high, after t1)");
     Assert::equal(c[2], std::string("t3"), "3rd: t3 (medium, unblocked)");
     Assert::equal(c[3], std::string("t4"), "4th: t4 (low, after t3)");
+    system("rm -rf ./queue_bdd_mixed");
 }
 } // namespace MultiAgentCoordinationSteps

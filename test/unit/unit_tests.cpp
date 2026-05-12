@@ -248,6 +248,7 @@ void test_cli_add_task_creates_json_file() {
                     (char*)"test_comp", (char*)"10", (char*)"dep1,dep2"};
     addTask(8, argv);
     Assert::is_true(std::filesystem::exists("./queue/pending/task1.json"), "task1.json should exist in pending queue");
+    system("rm -rf ./queue");
 }
 
 void test_cli_list_tasks_shows_pending_file() {
@@ -261,6 +262,7 @@ void test_cli_list_tasks_shows_pending_file() {
     std::cout.rdbuf(old);
 
     Assert::is_true(buf.str().find("task1.json") != std::string::npos, "list output should include task1.json");
+    system("rm -rf ./queue");
 }
 
 void test_daemon_runs_to_completion_single_agent() {
@@ -278,6 +280,7 @@ void test_daemon_runs_to_completion_single_agent() {
 
     const auto& completed = coordinator.getScheduler().getCompletedTaskIds();
     Assert::size_equals(completed, size_t(3), "All 3 tasks should complete");
+    system("rm -rf ./queue_unit_daemon");
 }
 
 void test_daemon_completes_priority_and_dependency_order() {
@@ -300,6 +303,7 @@ void test_daemon_completes_priority_and_dependency_order() {
     Assert::equal(c[1], std::string("t4"), "2nd: high-priority dependent task (after t2)");
     Assert::equal(c[2], std::string("t3"), "3rd: medium-priority task");
     Assert::equal(c[3], std::string("t1"), "4th: low-priority task");
+    system("rm -rf ./queue_unit_order");
 }
 
 void test_topological_sort() {
