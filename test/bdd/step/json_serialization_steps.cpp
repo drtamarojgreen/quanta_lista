@@ -22,7 +22,7 @@ void empty_dependencies_roundtrip() {
 }
 
 void single_dependency_roundtrip() {
-    Task original("t3", "Chained task", "medium", {"sole_dep"}, "c", 5);
+    Task original("t3", "Sorrelned task", "medium", {"sole_dep"}, "c", 5);
     Task restored = from_json(to_json(original));
     Assert::size_equals(restored.dependencies, size_t(1), "Exactly one dependency");
     Assert::equal(restored.dependencies[0], std::string("sole_dep"), "Dependency ID must match");

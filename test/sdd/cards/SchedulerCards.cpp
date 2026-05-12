@@ -1,9 +1,9 @@
-#include "../test_framework.h"
+#include "../../test_framework.h"
 #include "fact_utils.h"
 #include "../../src/QuantaLista.h"
 #include "../../src/SchedulerUI.h"
 
-using namespace Chai::Cdd::Util;
+using namespace Sorrel::Sdd::Util;
 
 // @Card: validate_scheduler_logic
 void validate_scheduler_logic(const std::map<std::string, std::string>& facts) {
@@ -36,6 +36,17 @@ void validate_scheduler_logic(const std::map<std::string, std::string>& facts) {
         // This might crash or return a default value depending on implementation
         // Verifying robustness
         std::cout << "result_InvalidDateDay = " << ui.renderPatientCalendar(2025, 13) << std::endl;
+    }
+
+    if (facts.count("HasLabels")) {
+        Task t("label_task", "Task with labels", "low", {}, "c", 1);
+        t.labels = {"urgent", "work"};
+        std::string json = to_json(t);
+        Task restored = from_json(json);
+        std::cout << "result_LabelCount = " << restored.labels.size() << std::endl;
+        for (const auto& l : restored.labels) {
+            std::cout << "result_LabelValue = " << l << std::endl;
+        }
     }
 }
 

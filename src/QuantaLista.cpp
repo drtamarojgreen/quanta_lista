@@ -3,6 +3,8 @@
 #include <vector>
 #include <algorithm>
 #include <sstream>
+#include <map>
+#include <set>
 
 // Helper function to extract a string value from a JSON string
 std::string extract_string(const std::string& json_string, const std::string& key) {
@@ -72,6 +74,17 @@ Task from_json(const std::string& json_string) {
     task.last_name = extract_string(json_string, "last_name");
     task.contact_info = extract_string(json_string, "contact_info");
     task.anonymous_id = extract_string(json_string, "anonymous_id");
+    task.labels = extract_string_vector(json_string, "labels");
+    task.due_date = extract_string(json_string, "due_date");
+    task.estimated_effort = extract_int(json_string, "estimated_effort");
+    task.actual_effort = extract_int(json_string, "actual_effort");
+    task.blocked_by_note = extract_string(json_string, "blocked_by_note");
+    task.owner = extract_string(json_string, "owner");
+    task.watchers = extract_string_vector(json_string, "watchers");
+    task.archived = (json_string.find("\"archived\": true") != std::string::npos);
+    task.sequence_number = extract_int(json_string, "sequence_number");
+    task.cancellation_reason = extract_string(json_string, "cancellation_reason");
+    task.creation_time = extract_string(json_string, "creation_time");
 
     return task;
 }
@@ -108,7 +121,32 @@ std::string to_json(const Task& task) {
     json_string += "\"first_name\": \"" + task.first_name + "\",";
     json_string += "\"last_name\": \"" + task.last_name + "\",";
     json_string += "\"contact_info\": \"" + task.contact_info + "\",";
-    json_string += "\"anonymous_id\": \"" + task.anonymous_id + "\"";
+    json_string += "\"anonymous_id\": \"" + task.anonymous_id + "\",";
+    json_string += "\"labels\": [";
+    for (size_t i = 0; i < task.labels.size(); ++i) {
+        json_string += "\"" + task.labels[i] + "\"";
+        if (i < task.labels.size() - 1) {
+            json_string += ",";
+        }
+    }
+    json_string += "],";
+    json_string += "\"due_date\": \"" + task.due_date + "\",";
+    json_string += "\"estimated_effort\": " + std::to_string(task.estimated_effort) + ",";
+    json_string += "\"actual_effort\": " + std::to_string(task.actual_effort) + ",";
+    json_string += "\"blocked_by_note\": \"" + task.blocked_by_note + "\",";
+    json_string += "\"owner\": \"" + task.owner + "\",";
+    json_string += "\"watchers\": [";
+    for (size_t i = 0; i < task.watchers.size(); ++i) {
+        json_string += "\"" + task.watchers[i] + "\"";
+        if (i < task.watchers.size() - 1) {
+            json_string += ",";
+        }
+    }
+    json_string += "],";
+    json_string += "\"archived\": " + std::string(task.archived ? "true" : "false") + ",";
+    json_string += "\"sequence_number\": " + std::to_string(task.sequence_number) + ",";
+    json_string += "\"cancellation_reason\": \"" + task.cancellation_reason + "\",";
+    json_string += "\"creation_time\": \"" + task.creation_time + "\"";
 
     json_string += "}";
     return json_string;
@@ -171,11 +209,28 @@ void AgentManager::registerAgent(const Agent& agent) {
 
 Agent* AgentManager::getIdleAgent() {
     for (auto& pair : agents) {
-        if (pair.second.state == AgentState::IDLE) {
+        if (pair.second.state == AgentState::IDLE && !pair.second.disabled) {
             return &pair.second;
         }
     }
     return nullptr;
+}
+
+Agent* AgentManager::getIdleAgentForTask(const Task& task) {
+    std::vector<Agent*> candidates;
+    for (auto& pair : agents) {
+        Agent& agent = pair.second;
+        if (agent.state == AgentState::IDLE && !agent.disabled) {
+            if (task.component.empty() || std::find(agent.capabilities.begin(), agent.capabilities.end(), task.component) != agent.capabilities.end()) {
+                 candidates.push_back(&agent);
+            }
+        }
+    }
+    if (candidates.empty()) return nullptr;
+    // Round-robin or simple load balancing
+    static size_t last_idx = 0;
+    last_idx %= candidates.size();
+    return candidates[last_idx++];
 }
 
 void AgentManager::setAgentState(const std::string& agentId, AgentState newState) {
@@ -184,6 +239,61 @@ void AgentManager::setAgentState(const std::string& agentId, AgentState newState
         if (it->second.state != newState) {
             it->second.state = newState;
             publisher.publish(AgentStateChangedEvent(agentId, newState));
+        }
+    }
+}
+
+void Scheduler::runMigration(const std::string& targetVersion) {
+    logEvent("INFO", "Migrating to version " + targetVersion);
+    std::ofstream v_file("schema_version.txt");
+    v_file << targetVersion;
+    v_file.close();
+}
+
+void Scheduler::rollbackMigration(const std::string& rollbackFile) {
+    logEvent("INFO", "Rolling back migration using " + rollbackFile);
+    // Simple mock rollback logic: read from file and update version
+    std::ifstream r_file(rollbackFile);
+    std::string prev_version;
+    if (r_file >> prev_version) {
+        runMigration(prev_version);
+    }
+}
+
+void AgentManager::updateHeartbeat(const std::string& agentId) {
+    if (agents.count(agentId)) {
+        auto now = std::chrono::system_clock::now();
+        auto in_time_t = std::chrono::system_clock::to_time_t(now);
+        std::stringstream ss;
+        ss << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d %H:%M:%S");
+        agents.at(agentId).last_heartbeat = ss.str();
+    }
+}
+
+void AgentManager::disableAgent(const std::string& agentId) {
+    if (agents.count(agentId)) {
+        agents.at(agentId).disabled = true;
+    }
+}
+
+void AgentManager::enableAgent(const std::string& agentId) {
+    if (agents.count(agentId)) {
+        agents.at(agentId).disabled = false;
+    }
+}
+
+void AgentManager::checkStaleAgents(int timeout_sec) {
+    auto now = std::chrono::system_clock::now();
+    for (auto& pair : agents) {
+        Agent& agent = pair.second;
+        if (!agent.last_heartbeat.empty()) {
+            std::tm tm = {};
+            std::stringstream ss(agent.last_heartbeat);
+            ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
+            auto tp = std::chrono::system_clock::from_time_t(std::mktime(&tm));
+            if (std::chrono::duration_cast<std::chrono::seconds>(now - tp).count() > timeout_sec) {
+                agent.disabled = true;
+            }
         }
     }
 }
@@ -201,15 +311,46 @@ const Agent* AgentManager::getAgent(const std::string& agentId) const {
 Scheduler::Scheduler(Publisher& pub) : publisher(pub), pending_tasks(TaskComparator{&tasks}) {}
 
 void Scheduler::submitTask(const Task& task) {
-    tasks.emplace(task.task_id, task);
-    pending_tasks.insert(task.task_id);
-    publisher.publish(TaskCreatedEvent(task.task_id, task.description));
-    publisher.publish(TaskStatusChangedEvent(task.task_id, TaskStatus::Pending));
+    if (tasks.find(task.task_id) == tasks.end()) {
+        Task t = task;
+        if (t.creation_time.empty()) {
+             auto now = std::chrono::system_clock::now();
+             auto in_time_t = std::chrono::system_clock::to_time_t(now);
+             std::stringstream ss;
+             // Enhancement #33: UTC Timestamps
+             ss << std::put_time(std::gmtime(&in_time_t), "%Y-%m-%d %H:%M:%S UTC");
+             t.creation_time = ss.str();
+        }
+        if (t.sequence_number == 0) {
+            static int next_seq = 1;
+            t.sequence_number = next_seq++;
+        }
+        tasks.emplace(t.task_id, t);
+        pending_tasks.insert(t.task_id);
+
+        bool already_in_schedule = false;
+        for (const auto& t : current_schedule.tasks) {
+            if (t.task_id == task.task_id) {
+                already_in_schedule = true;
+                break;
+            }
+        }
+        if (!already_in_schedule) {
+            current_schedule.addTask(task);
+        }
+
+        publisher.publish(TaskCreatedEvent(task.task_id, task.description));
+        publisher.publish(TaskStatusChangedEvent(task.task_id, TaskStatus::Pending));
+    }
 }
 
 bool Scheduler::areDependenciesMet(const Task& task) {
     for (const auto& depId : task.dependencies) {
         if (std::find(completed_task_ids.begin(), completed_task_ids.end(), depId) == completed_task_ids.end()) {
+            // Check if dependency even exists
+            if (tasks.find(depId) == tasks.end()) {
+                logEvent("ERROR", "Dependency " + depId + " for task " + task.task_id + " does not exist.");
+            }
             return false;
         }
     }
@@ -217,47 +358,102 @@ bool Scheduler::areDependenciesMet(const Task& task) {
 }
 
 Task* Scheduler::getNextAvailableTask() {
+    if (isCircuitBroken()) return nullptr;
+
     for (auto it = pending_tasks.begin(); it != pending_tasks.end(); ++it) {
         Task& task = tasks.at(*it);
+        if (std::find(paused_task_ids.begin(), paused_task_ids.end(), *it) != paused_task_ids.end()) {
+            continue;
+        }
         if (areDependenciesMet(task)) {
-            // Move task from pending to in-progress
-            in_progress_task_ids.push_back(*it);
-            auto task_ptr = &tasks.at(*it);
+            std::string tid = *it;
+            in_progress_task_ids.push_back(tid);
             pending_tasks.erase(it);
-            publisher.publish(TaskStatusChangedEvent(task_ptr->task_id, TaskStatus::InProgress));
-            return task_ptr;
+            task_start_times[tid] = std::chrono::steady_clock::now();
+            publisher.publish(TaskStatusChangedEvent(tid, TaskStatus::InProgress));
+            return &tasks.at(tid);
         }
     }
     return nullptr;
 }
 
 void Scheduler::markTaskAsCompleted(const std::string& taskId) {
-    // Remove from in-progress tasks
-    in_progress_task_ids.erase(std::remove(in_progress_task_ids.begin(), in_progress_task_ids.end(), taskId), in_progress_task_ids.end());
-    // Add to completed tasks
-    completed_task_ids.push_back(taskId);
-    publisher.publish(TaskStatusChangedEvent(taskId, TaskStatus::Completed));
+    auto it = std::find(in_progress_task_ids.begin(), in_progress_task_ids.end(), taskId);
+    if (it != in_progress_task_ids.end()) {
+        in_progress_task_ids.erase(it);
+        completed_task_ids.push_back(taskId);
+
+        if (task_start_times.count(taskId)) {
+            auto end = std::chrono::steady_clock::now();
+            std::chrono::duration<double> diff = end - task_start_times[taskId];
+            completion_times.push_back(diff.count());
+            task_start_times.erase(taskId);
+        }
+
+        if (circuit_state == CircuitState::HALF_OPEN) {
+             circuit_state = CircuitState::CLOSED;
+             circuit_breaker_failures = 0;
+        }
+
+        publisher.publish(TaskStatusChangedEvent(taskId, TaskStatus::Completed));
+    }
 }
 
 void Scheduler::setSchedule(const Schedule& schedule) {
+    // Enhancement #97: Cycle detection before scheduling
+    std::map<std::string, int> visit; // 0: unvisited, 1: visiting, 2: visited
+    std::function<bool(const std::string&)> hasCycle = [&](const std::string& u) {
+        visit[u] = 1;
+        for (const auto& task : schedule.tasks) {
+            if (task.task_id == u) {
+                for (const auto& v : task.dependencies) {
+                    if (visit[v] == 1) return true;
+                    if (visit[v] == 0 && hasCycle(v)) return true;
+                }
+            }
+        }
+        visit[u] = 2;
+        return false;
+    };
+
+    for (const auto& t : schedule.tasks) {
+        if (visit[t.task_id] == 0) {
+            if (hasCycle(t.task_id)) {
+                logEvent("ERROR", "Dependency cycle detected in schedule: " + schedule.name);
+                return;
+            }
+        }
+    }
+
     current_schedule = schedule;
+    logEvent("INFO", "Setting new schedule: " + schedule.name);
     for (const auto& task : current_schedule.tasks) {
         submitTask(task);
     }
 }
 
 void Scheduler::saveSchedule(const std::string& filepath) {
+    if (!isValidPath(filepath)) {
+        logEvent("ERROR", "Invalid path for saveSchedule: " + filepath);
+        return;
+    }
     std::ofstream file(filepath);
     file << to_json(current_schedule);
     file.close();
+    logEvent("INFO", "Schedule saved to " + filepath);
 }
 
 void Scheduler::loadSchedule(const std::string& filepath) {
+    if (!isValidPath(filepath)) {
+        logEvent("ERROR", "Invalid path for loadSchedule: " + filepath);
+        return;
+    }
     std::ifstream file(filepath);
     if (file.is_open()) {
         std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
         setSchedule(schedule_from_json(content));
         file.close();
+        logEvent("INFO", "Schedule loaded from " + filepath);
     }
 }
 
@@ -270,11 +466,321 @@ void Scheduler::removeTask(const std::string& taskId) {
     tasks.erase(taskId);
     pending_tasks.erase(taskId);
     in_progress_task_ids.erase(std::remove(in_progress_task_ids.begin(), in_progress_task_ids.end(), taskId), in_progress_task_ids.end());
+    paused_task_ids.erase(std::remove(paused_task_ids.begin(), paused_task_ids.end(), taskId), paused_task_ids.end());
+    completed_task_ids.erase(std::remove(completed_task_ids.begin(), completed_task_ids.end(), taskId), completed_task_ids.end());
+    logEvent("INFO", "Removed task: " + taskId);
+}
+
+void Scheduler::pauseTask(const std::string& taskId) {
+    if (tasks.find(taskId) != tasks.end()) {
+        if (pending_tasks.find(taskId) != pending_tasks.end()) {
+             if (std::find(paused_task_ids.begin(), paused_task_ids.end(), taskId) == paused_task_ids.end()) {
+                paused_task_ids.push_back(taskId);
+                logEvent("INFO", "Paused task: " + taskId);
+                publisher.publish(TaskStatusChangedEvent(taskId, TaskStatus::Paused));
+             }
+        }
+    }
+}
+
+void Scheduler::resumeTask(const std::string& taskId) {
+    auto it = std::find(paused_task_ids.begin(), paused_task_ids.end(), taskId);
+    if (it != paused_task_ids.end()) {
+        paused_task_ids.erase(it);
+        logEvent("INFO", "Resumed task: " + taskId);
+        publisher.publish(TaskStatusChangedEvent(taskId, TaskStatus::Pending));
+    }
+}
+
+TaskStatus Scheduler::getTaskStatus(const std::string& taskId) const {
+    if (std::find(completed_task_ids.begin(), completed_task_ids.end(), taskId) != completed_task_ids.end()) return TaskStatus::Completed;
+    if (std::find(in_progress_task_ids.begin(), in_progress_task_ids.end(), taskId) != in_progress_task_ids.end()) return TaskStatus::InProgress;
+    if (std::find(paused_task_ids.begin(), paused_task_ids.end(), taskId) != paused_task_ids.end()) return TaskStatus::Paused;
+    if (pending_tasks.find(taskId) != pending_tasks.end()) return TaskStatus::Pending;
+    if (cancellation_reasons.find(taskId) != cancellation_reasons.end()) return TaskStatus::Failed;
+    return TaskStatus::Failed; // Or some unknown/not found status
+}
+
+void Scheduler::addTaskTemplate(const TaskTemplate& tmpl) {
+    templates[tmpl.template_id] = tmpl;
+}
+
+Task Scheduler::createTaskFromTemplate(const std::string& templateId, const std::string& newTaskId) {
+    if (templates.find(templateId) != templates.end()) {
+        logEvent("INFO", "Creating task " + newTaskId + " from template " + templateId);
+        Task t = templates[templateId].createTask(newTaskId);
+        submitTask(t);
+        return tasks[newTaskId];
+    }
+    return Task();
+}
+
+Task Scheduler::cloneTask(const std::string& sourceTaskId, const std::string& newTaskId) {
+    if (tasks.find(sourceTaskId) != tasks.end()) {
+        Task t = tasks[sourceTaskId];
+        t.task_id = newTaskId;
+        t.sequence_number = 0; // Will be regenerated in submitTask
+        t.creation_time = ""; // Will be regenerated
+        submitTask(t);
+        logEvent("INFO", "Cloned task " + sourceTaskId + " to " + newTaskId);
+        return tasks[newTaskId];
+    }
+    return Task();
+}
+
+void Scheduler::cancelTask(const std::string& taskId, const std::string& reason) {
+    if (tasks.find(taskId) != tasks.end()) {
+        cancellation_reasons[taskId] = reason;
+        removeTask(taskId);
+        publisher.publish(TaskStatusChangedEvent(taskId, TaskStatus::Failed));
+    }
+}
+
+void Scheduler::createDraftTask(const Task& task) {
+    logEvent("INFO", "Creating draft task: " + task.task_id);
+    drafts[task.task_id] = task;
+}
+
+void Scheduler::submitDraftTask(const std::string& taskId) {
+    if (drafts.find(taskId) != drafts.end()) {
+        logEvent("INFO", "Submitting draft task: " + taskId);
+        submitTask(drafts[taskId]);
+        drafts.erase(taskId);
+    }
+}
+
+void Scheduler::batchCreateTasks(const std::vector<Task>& tasks) {
+    logEvent("INFO", "Batch creating " + std::to_string(tasks.size()) + " tasks.");
+    for (const auto& t : tasks) {
+        submitTask(t);
+    }
+}
+
+std::string Scheduler::exportToCSV() const {
+    std::stringstream ss;
+    ss << "task_id,description,priority,status,owner,due_date\n";
+    for (const auto& pair : tasks) {
+        const Task& t = pair.second;
+        // Simple CSV escaping: replace quotes with double quotes
+        auto escape = [](std::string s) {
+            size_t pos = 0;
+            while ((pos = s.find("\"", pos)) != std::string::npos) {
+                s.replace(pos, 1, "\"\"");
+                pos += 2;
+            }
+            return "\"" + s + "\"";
+        };
+        ss << escape(t.task_id) << "," << escape(t.description) << "," << escape(t.priority) << ","
+           << (int)getTaskStatus(t.task_id) << "," << escape(t.owner) << "," << escape(t.due_date) << "\n";
+    }
+    return ss.str();
+}
+
+void Scheduler::archiveTask(const std::string& taskId) {
+    if (tasks.find(taskId) != tasks.end()) {
+        tasks[taskId].archived = true;
+        logEvent("INFO", "Archived task: " + taskId);
+    }
+}
+
+void Scheduler::restoreTask(const std::string& taskId) {
+    if (tasks.find(taskId) != tasks.end()) {
+        tasks[taskId].archived = false;
+    }
+}
+
+void Scheduler::agePriorities() {
+    logEvent("INFO", "Aging task priorities...");
+    std::vector<std::string> tids;
+    for (const auto& tid : pending_tasks) tids.push_back(tid);
+
+    pending_tasks.clear();
+    for (const auto& taskId : tids) {
+        Task& t = tasks.at(taskId);
+        if (t.priority == "low") t.priority = "medium";
+        else if (t.priority == "medium") t.priority = "high";
+        pending_tasks.insert(taskId);
+    }
+}
+
+std::string Scheduler::getCachedCalculation(const std::string& key) {
+    if (calculation_cache.count(key)) return calculation_cache[key];
+    return "";
+}
+
+void Scheduler::setCachedCalculation(const std::string& key, const std::string& value) {
+    calculation_cache[key] = value;
+}
+
+std::vector<Task> Scheduler::searchTasks(const std::string& query) {
+    std::vector<Task> results;
+    std::string lower_query = query;
+    std::transform(lower_query.begin(), lower_query.end(), lower_query.begin(), ::tolower);
+    for (const auto& pair : tasks) {
+        const Task& t = pair.second;
+        std::string lower_desc = t.description;
+        std::transform(lower_desc.begin(), lower_desc.end(), lower_desc.begin(), ::tolower);
+        if (lower_desc.find(lower_query) != std::string::npos || t.task_id.find(lower_query) != std::string::npos) {
+            results.push_back(t);
+        }
+    }
+    return results;
+}
+
+std::vector<std::string> Scheduler::detectOrphanedDependencies() const {
+    std::vector<std::string> orphans;
+    for (const auto& pair : tasks) {
+        for (const auto& dep : pair.second.dependencies) {
+            if (tasks.find(dep) == tasks.end()) {
+                orphans.push_back(dep);
+            }
+        }
+    }
+    return orphans;
+}
+
+void Scheduler::compactArchive() {
+    size_t before = current_schedule.tasks.size();
+    auto it = std::remove_if(current_schedule.tasks.begin(), current_schedule.tasks.end(),
+        [](const Task& t) { return t.archived; });
+    current_schedule.tasks.erase(it, current_schedule.tasks.end());
+    size_t after = current_schedule.tasks.size();
+    logEvent("INFO", "Compacted archive. Removed " + std::to_string(before - after) + " tasks.");
+}
+
+std::string Scheduler::exportToJSON() const {
+    return to_json(current_schedule);
+}
+
+void Scheduler::importFromJSON(const std::string& json) {
+    setSchedule(schedule_from_json(json));
+}
+
+std::string Scheduler::exportToLineDelimitedJSON() const {
+    std::stringstream ss;
+    for (const auto& t : current_schedule.tasks) {
+        ss << to_json(t) << "\n";
+    }
+    return ss.str();
+}
+
+void Scheduler::createBackup(const std::string& backupPath) {
+    saveSchedule(backupPath);
+}
+
+void Scheduler::restoreBackup(const std::string& backupPath) {
+    loadSchedule(backupPath);
+}
+
+void Scheduler::pruneBackups(const std::string& directory, int maxBackups) {
+    std::vector<std::filesystem::path> backups;
+    for (const auto& entry : std::filesystem::directory_iterator(directory)) {
+        if (entry.is_regular_file()) backups.push_back(entry.path());
+    }
+    if (backups.size() > (size_t)maxBackups) {
+        std::sort(backups.begin(), backups.end(), [](const auto& a, const auto& b) {
+            return std::filesystem::last_write_time(a) < std::filesystem::last_write_time(b);
+        });
+        for (size_t i = 0; i < backups.size() - maxBackups; ++i) {
+            std::filesystem::remove(backups[i]);
+        }
+    }
+}
+
+void Scheduler::shutdown() {
+    logEvent("INFO", "Scheduler shutting down gracefully...");
+    saveSchedule("shutdown_state.json");
+    logEvent("INFO", "State saved to shutdown_state.json");
+}
+
+void Scheduler::logEvent(const std::string& level, const std::string& message) {
+    auto now = std::chrono::system_clock::now();
+    auto in_time_t = std::chrono::system_clock::to_time_t(now);
+
+    // Structured JSON-like output
+    std::cout << "{\"timestamp\": \"" << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d %H:%M:%S")
+              << "\", \"level\": \"" << level
+              << "\", \"message\": \"" << message << "\"}" << std::endl;
+}
+
+int Scheduler::getCompletedTaskCount() const {
+    return completed_task_ids.size();
+}
+
+int Scheduler::getFailedTaskCount() const {
+    return cancellation_reasons.size();
+}
+
+double Scheduler::getRollingAverageCompletionTime() const {
+    if (completion_times.empty()) return 0.0;
+    double sum = 0;
+    for (double t : completion_times) sum += t;
+    return sum / completion_times.size();
+}
+
+bool Scheduler::isValidPath(const std::string& path) {
+    if (path.find("..") != std::string::npos) return false;
+    return true;
+}
+
+void Scheduler::setRetryLimit(int limit) {
+    retry_limit = limit;
+}
+
+void Scheduler::handleTaskFailure(const std::string& taskId) {
+    retry_counts[taskId]++;
+    circuit_breaker_failures++;
+
+    if (circuit_breaker_failures >= circuit_breaker_threshold) {
+        circuit_state = CircuitState::OPEN;
+        last_circuit_failure = std::chrono::steady_clock::now();
+        logEvent("ERROR", "Circuit breaker OPENED due to multiple failures.");
+    }
+
+    if (retry_counts[taskId] < retry_limit) {
+        auto it = std::find(in_progress_task_ids.begin(), in_progress_task_ids.end(), taskId);
+        if (it != in_progress_task_ids.end()) in_progress_task_ids.erase(it);
+
+        // Exponential backoff: 2^retry_count seconds
+        int backoff_sec = (1 << retry_counts[taskId]);
+        logEvent("INFO", "Task " + taskId + " failed. Retrying in " + std::to_string(backoff_sec) + "s.");
+
+        // In a real system, we'd schedule this. For now, we move it back to pending but track its retry time.
+        pending_tasks.insert(taskId);
+        publisher.publish(TaskStatusChangedEvent(taskId, TaskStatus::Pending));
+    } else {
+        logEvent("ERROR", "Task " + taskId + " reached max retries. Moving to dead-letter storage.");
+        cancelTask(taskId, "Max retries reached");
+
+        // Enhancement #85: Dead-letter storage
+        std::filesystem::create_directories("./queue/dead_letter");
+        std::string filename = "./queue/dead_letter/" + taskId + ".json";
+        std::ofstream o(filename);
+        o << to_json(tasks[taskId]) << std::endl;
+    }
+}
+
+bool Scheduler::isCircuitBroken() const {
+    if (circuit_state == CircuitState::OPEN) {
+        auto now = std::chrono::steady_clock::now();
+        if (now - last_circuit_failure > std::chrono::seconds(30)) {
+             const_cast<Scheduler*>(this)->circuit_state = CircuitState::HALF_OPEN;
+             return false;
+        }
+        return true;
+    }
+    return false;
+}
+
+void Scheduler::resetCircuitBreaker() {
+    circuit_breaker_failures = 0;
+    circuit_state = CircuitState::CLOSED;
 }
 
 #include <filesystem>
 #include <fstream>
 #include <thread>
+#include <ctime>
 #include <chrono>
 #include <random>
 

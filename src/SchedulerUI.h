@@ -34,6 +34,7 @@ public:
     std::string renderConflictModal(const std::string& taskId, const std::vector<std::string>& overlappingTasks);
     std::string renderLoadingSpinner(const std::string& message);
     std::string renderNotification(const std::string& message, const std::string& type);
+    std::string renderDashboard(const Schedule& schedule, const std::vector<Agent>& agents);
 
 private:
     std::string getMonthName(int month);

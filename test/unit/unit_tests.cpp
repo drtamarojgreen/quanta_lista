@@ -204,7 +204,7 @@ void test_json_roundtrip_no_dependencies() {
 }
 
 void test_json_roundtrip_single_dependency() {
-    Task original("t3", "Chained", "medium", {"sole"}, "c", 5);
+    Task original("t3", "Sorrelned", "medium", {"sole"}, "c", 5);
     Task restored = from_json(to_json(original));
     Assert::size_equals(restored.dependencies, size_t(1), "Single dependency count");
     Assert::equal(restored.dependencies[0], std::string("sole"), "Dependency ID");

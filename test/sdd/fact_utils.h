@@ -4,8 +4,8 @@
 #include <map>
 #include <string>
 
-namespace Chai {
-namespace Cdd {
+namespace Sorrel {
+namespace Sdd {
 namespace Util {
 
 class FactReader {
@@ -14,7 +14,7 @@ public:
 };
 
 } // Util
-} // Cdd
-} // Chai
+} // Sdd
+} // Sorrel
 
 #endif

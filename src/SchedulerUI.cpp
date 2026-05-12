@@ -208,6 +208,21 @@ std::string SchedulerUI::renderNotification(const std::string& message, const st
     return prefix + " " + message;
 }
 
+std::string SchedulerUI::renderDashboard(const Schedule& schedule, const std::vector<Agent>& agents) {
+    std::stringstream ss;
+    ss << "QUANTALISTA DASHBOARD\n";
+    ss << "=====================\n";
+    ss << "TASKS:\n";
+    for (const auto& t : schedule.tasks) {
+        ss << "- " << t.task_id << " [" << t.priority << "] " << t.description << "\n";
+    }
+    ss << "\nAGENTS:\n";
+    for (const auto& a : agents) {
+        ss << "- " << a.name << " (" << a.id << "): " << (a.disabled ? "DISABLED" : "READY") << "\n";
+    }
+    return ss.str();
+}
+
 std::string SchedulerUI::getMonthName(int month) {
     const char* months[] = {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"};
     if (month >= 1 && month <= 12) return months[month - 1];

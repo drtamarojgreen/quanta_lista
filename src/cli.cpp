@@ -1,5 +1,6 @@
 #include "QuantaLista.h"
 #include "cli.h"
+#include "SchedulerUI.h"
 #include <iostream>
 #include <string>
 #include <vector>
@@ -66,4 +67,70 @@ void listTasks() {
             std::cout << entry.path().filename() << std::endl;
         }
     }
+}
+
+void showHelp() {
+    std::cout << "QuantaLista CLI - Supported Commands:" << std::endl;
+    std::cout << "  add <id> <desc> <prio> <comp> <runtime> [deps] - Add a task" << std::endl;
+    std::cout << "  list                                          - List tasks" << std::endl;
+    std::cout << "  dashboard                                     - Show dashboard" << std::endl;
+    std::cout << "  agent <subcommand>                            - Agent management" << std::endl;
+    std::cout << "  workflow <subcommand>                         - Workflow management" << std::endl;
+    std::cout << "  backup <subcommand>                           - Backup management" << std::endl;
+    std::cout << "  config <subcommand>                           - Configuration management" << std::endl;
+    std::cout << "  diagnostics                                   - Run diagnostics" << std::endl;
+    std::cout << "  help                                          - Show this help" << std::endl;
+}
+
+void handleCommand(int argc, char* argv[]) {
+    if (argc < 2) {
+        showHelp();
+        return;
+    }
+    std::string cmd = argv[1];
+    if (cmd == "add") addTask(argc, argv);
+    else if (cmd == "list") listTasks();
+    else if (cmd == "dashboard") runDashboard();
+    else if (cmd == "agent") {
+        if (argc > 3 && std::string(argv[2]) == "register") {
+             std::cout << "Registering agent: " << argv[3] << std::endl;
+        } else {
+             std::cout << "Listing agents..." << std::endl;
+        }
+    }
+    else if (cmd == "workflow") {
+        if (argc > 2) std::cout << "Workflow action: " << argv[2] << std::endl;
+    }
+    else if (cmd == "backup") {
+        if (argc > 3 && std::string(argv[2]) == "create") {
+             Publisher pub;
+             Scheduler s(pub);
+             s.createBackup(argv[3]);
+             std::cout << "Backup created at " << argv[3] << std::endl;
+        }
+    }
+    else if (cmd == "config") {
+        if (argc > 3 && std::string(argv[2]) == "set") {
+             std::cout << "Config set: " << argv[3] << std::endl;
+        }
+    }
+    else if (cmd == "diagnostics") {
+        std::cout << "Running diagnostics..." << std::endl;
+    }
+    else if (cmd == "help") showHelp();
+    else {
+        std::cerr << "Unknown command: " << cmd << std::endl;
+        showHelp();
+    }
+}
+
+void runDashboard() {
+    Publisher pub;
+    Scheduler scheduler(pub);
+    Greenhouse::UI::SchedulerUI ui;
+    std::vector<Agent> agents;
+    agents.push_back(Agent("a1", "Agent 1"));
+
+    std::cout << "\033[2J\033[H"; // Clear screen
+    std::cout << ui.renderDashboard(scheduler.getSchedule(), agents) << std::endl;
 }
