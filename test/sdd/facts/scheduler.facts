@@ -9,3 +9,16 @@ Is LeapYearDate = 2024-02-29
 Is NonLeapYearDate = 2023-02-28
 Is InvalidDate = 2025-13-45
 Is HasLabels = true
+
+# Topological Sort Facts
+Is SortInput = [t3:t2, t2:t1, t1:]
+Is ExpectedSortOrder = t1,t2,t3
+
+# Validation Facts
+Is InvalidTaskID = ""
+Is InvalidTaskDesc = ""
+Is ValidTaskID = t_valid
+Is ValidTaskDesc = "Valid description"
+
+# Duplicate Detection Facts
+Is DuplicateID = t_dup
