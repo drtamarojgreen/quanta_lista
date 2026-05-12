@@ -37,7 +37,7 @@ void independent_tasks_complete_hml() {
 
 void chain_completes_all_tasks() {
     system("rm -rf ./queue_bdd_chain");
-    Project project("p1", "Chain Project");
+    Project project("p1", "Sorreln Project");
     Workflow wf("wf1", "WF");
     wf.addTask(Task("t1", "analyze", "high", {}, "c", 1));
     wf.addTask(Task("t2", "design", "high", {"t1"}, "c", 1));
@@ -55,7 +55,7 @@ void chain_completes_all_tasks() {
 
 void chain_respects_predecessors() {
     system("rm -rf ./queue_bdd_chain2");
-    Project project("p1", "Chain Project");
+    Project project("p1", "Sorreln Project");
     Workflow wf("wf1", "WF");
     wf.addTask(Task("t1", "analyze", "high", {}, "c", 1));
     wf.addTask(Task("t2", "design", "high", {"t1"}, "c", 1));
