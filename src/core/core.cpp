@@ -1,5 +1,6 @@
 #include "core.h"
 #include "../utils/json_utils.h"
+#include "../models/ModelBackend.h"
 #include <iostream>
 #include <vector>
 #include <algorithm>
@@ -99,49 +100,17 @@ const Agent* AgentManager::getAgent(const std::string& agentId) const {
 
 // --- Scheduler Implementation ---
 
-Scheduler::Scheduler(Publisher& pub) : publisher(pub), pending_tasks(TaskComparator{&tasks}) {}
+Scheduler::Scheduler(Publisher& pub) : publisher(pub) {}
 
 void Scheduler::submitTask(const Task& task) {
-    if (tasks.find(task.task_id) == tasks.end()) {
-        Task t = task;
-        if (t.creation_time.empty()) {
-             auto now = std::chrono::system_clock::now();
-             auto in_time_t = std::chrono::system_clock::to_time_t(now);
-             std::stringstream ss;
-             ss << std::put_time(std::gmtime(&in_time_t), "%Y-%m-%d %H:%M:%S UTC");
-             t.creation_time = ss.str();
-        }
-        if (t.sequence_number == 0) {
-            static int next_seq = 1;
-            t.sequence_number = next_seq++;
-        }
-        tasks.emplace(t.task_id, t);
-        pending_tasks.insert(t.task_id);
-
-        bool already_in_schedule = false;
-        for (const auto& existing_t : current_schedule.tasks) {
-            if (existing_t.task_id == task.task_id) {
-                already_in_schedule = true;
-                break;
-            }
-        }
-        if (!already_in_schedule) {
-            current_schedule.addTask(task);
-        }
-
-        publisher.publish(TaskCreatedEvent(task.task_id, task.description));
-        publisher.publish(TaskStatusChangedEvent(task.task_id, TaskStatus::Pending));
-    }
+    tasks[task.task_id] = task;
+    pending_tasks.insert(task.task_id);
+    publisher.publish(TaskCreatedEvent(task.task_id, task.description));
 }
 
 bool Scheduler::areDependenciesMet(const Task& task) {
-    for (const auto& depId : task.dependencies) {
-        if (std::find(completed_task_ids.begin(), completed_task_ids.end(), depId) == completed_task_ids.end()) {
-            if (tasks.find(depId) == tasks.end()) {
-                logEvent("ERROR", "Dependency " + depId + " for task " + task.task_id + " does not exist.");
-            }
-            return false;
-        }
+    for (const auto& dep : task.dependencies) {
+        if (std::find(completed_task_ids.begin(), completed_task_ids.end(), dep) == completed_task_ids.end()) return false;
     }
     return true;
 }
@@ -162,6 +131,8 @@ Task* Scheduler::getNextAvailableTask() {
         }
     }
     return nullptr;
+}
+
 void Scheduler::markTaskAsCompleted(const std::string& taskId) {
     auto it = std::find(in_progress_task_ids.begin(), in_progress_task_ids.end(), taskId);
     if (it != in_progress_task_ids.end()) {
@@ -579,6 +550,7 @@ Coordinator::Coordinator(Project p, const std::string& queue_dir)
 void Coordinator::registerAgent(const Agent& agent) { agent_manager.registerAgent(agent); }
 
 void Coordinator::processPendingTasks() {
+    ModelBackend model_backend;
     for (const auto& entry : std::filesystem::directory_iterator(pending_dir)) {
         if (entry.is_regular_file() && entry.path().extension() == ".json") {
             auto filename = entry.path().filename();
@@ -590,14 +562,20 @@ void Coordinator::processPendingTasks() {
             auto in_progress_path = in_progress_dir / filename;
             std::filesystem::rename(entry.path(), in_progress_path);
             scheduler.submitTask(task);
-            std::this_thread::sleep_for(std::chrono::seconds(1));
+            
+            std::string output = "Task processed successfully.";
+            if (model_backend.is_available()) {
+                output = model_backend.run_model(task.description);
+            } else {
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+            }
+            
             scheduler.markTaskAsCompleted(task.task_id);
             auto completed_path = completed_dir / filename;
             std::ofstream result_file(completed_path);
-            result_file << "{\"task_id\": \"" << task.task_id << "\", \"status\": \"completed\", \"output\": \"Task processed successfully.\"}" << std::endl;
+            result_file << "{\"task_id\": \"" << task.task_id << "\", \"status\": \"completed\", \"output\": \"" << output << "\"}" << std::endl;
             result_file.close();
             std::filesystem::remove(in_progress_path);
-
         }
     }
 }
