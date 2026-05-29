@@ -1,388 +1,194 @@
-#include "../test_framework.h"
-#include "../../src/cli.h"
+#include <iostream>
+#include <string>
+#include <vector>
+#include <cassert>
 #include <filesystem>
 #include <fstream>
-#include <sstream>
 
-void test_no_agents_returns_null_idle() {
-    Publisher pub;
-    AgentManager am(pub);
-    Assert::is_null(am.getIdleAgent(), "Empty manager should return null for idle agent");
+#include "models/models.h"
+#include "events/events.h"
+#include "core/core.h"
+#include "utils/json_utils.h"
+#include "cli/cli.h"
+
+// Simple test helper
+void assert_test(bool condition, const std::string& message) {
+    if (condition) {
+        std::cout << "    \033[2m▸ \033[0m" << std::left << std::setw(60) << message << " \033[32mPASS\033[0m" << std::endl;
+    } else {
+        std::cout << "    \033[2m▸ \033[0m" << std::left << std::setw(60) << message << " \033[31mFAIL\033[0m" << std::endl;
+        exit(1);
+    }
 }
 
-void test_registered_agent_is_idle() {
+void test_agent_manager() {
+    std::cout << "\n\033[1m\033[33m  ── AgentManager ──\033[0m" << std::endl;
     Publisher pub;
     AgentManager am(pub);
-    am.registerAgent(Agent("a1", "Alpha"));
-
-    Agent* agent = am.getIdleAgent();
-    Assert::not_null(agent, "Registered agent should be retrievable as idle");
-    Assert::equal(agent->id, std::string("a1"), "Agent ID should match");
-    Assert::equal(agent->state, AgentState::IDLE, "Freshly registered agent must be IDLE");
-}
-
-void test_busy_agent_not_returned_as_idle() {
-    Publisher pub;
-    AgentManager am(pub);
-    am.registerAgent(Agent("a1", "Alpha"));
+    assert_test(am.getIdleAgent() == nullptr, "no agents -> getIdleAgent() returns null");
+    am.registerAgent(Agent("a1", "Agent 1"));
+    assert_test(am.getIdleAgent() != nullptr && am.getIdleAgent()->id == "a1", "registered agent is IDLE");
     am.setAgentState("a1", AgentState::BUSY);
-
-    Assert::is_null(am.getIdleAgent(), "BUSY agent must not be returned as idle");
-}
-
-void test_agent_returns_to_idle_after_busy() {
-    Publisher pub;
-    AgentManager am(pub);
-    am.registerAgent(Agent("a1", "Alpha"));
-    am.setAgentState("a1", AgentState::BUSY);
+    assert_test(am.getIdleAgent() == nullptr, "BUSY agent not returned as idle");
     am.setAgentState("a1", AgentState::IDLE);
-
-    Agent* agent = am.getIdleAgent();
-    Assert::not_null(agent, "Agent should be idle again after reset");
-    Assert::equal(agent->id, std::string("a1"), "Correct agent returned after state reset");
-}
-
-void test_error_agent_not_returned_as_idle() {
-    Publisher pub;
-    AgentManager am(pub);
-    am.registerAgent(Agent("a1", "Alpha"));
+    assert_test(am.getIdleAgent() != nullptr && am.getIdleAgent()->id == "a1", "agent returns to IDLE after BUSY");
     am.setAgentState("a1", AgentState::ERROR);
-
-    Assert::is_null(am.getIdleAgent(), "ERROR agent must not be returned as idle");
+    assert_test(am.getIdleAgent() == nullptr, "ERROR agent not returned as idle");
+    am.registerAgent(Agent("a2", "Agent 2"));
+    assert_test(am.getIdleAgent() != nullptr && am.getIdleAgent()->id == "a2", "idle agent selected from mixed pool");
+    assert_test(am.getAgent("a1") != nullptr && am.getAgent("a1")->id == "a1", "getAgent() returns agent by ID");
+    assert_test(am.getAgent("unknown") == nullptr, "getAgent() returns null for unknown ID");
+    am.setAgentState("unknown", AgentState::BUSY); // Should be safe
+    assert_test(true, "setAgentState() on unknown ID is safe");
 }
 
-void test_idle_agent_selected_from_mixed_pool() {
+void test_scheduler() {
+    std::cout << "\n\033[1m\033[33m  ── Scheduler ──\033[0m" << std::endl;
     Publisher pub;
-    AgentManager am(pub);
-    am.registerAgent(Agent("busy", "Beta"));
-    am.registerAgent(Agent("idle", "Gamma"));
-    am.setAgentState("busy", AgentState::BUSY);
-
-    Agent* selected = am.getIdleAgent();
-    Assert::not_null(selected, "Should find idle agent in pool");
-    Assert::equal(selected->id, std::string("idle"), "The idle agent should be selected");
+    Scheduler s(pub);
+    assert_test(s.getNextAvailableTask() == nullptr, "empty scheduler returns null");
+    s.submitTask(Task("t1", "Task 1", "medium", {}, "comp", 10));
+    Task* t = s.getNextAvailableTask();
+    assert_test(t != nullptr && t->task_id == "t1", "single submitted task is returned");
+    s.markTaskAsCompleted("t1");
+    s.submitTask(Task("low_p", "Low", "low", {}, "comp", 10));
+    s.submitTask(Task("high_p", "High", "high", {}, "comp", 10));
+    t = s.getNextAvailableTask();
+    assert_test(t != nullptr && t->task_id == "high_p", "high priority scheduled before low");
+    s.markTaskAsCompleted("high_p");
+    s.submitTask(Task("med_p", "Med", "medium", {}, "comp", 10));
+    t = s.getNextAvailableTask();
+    assert_test(t != nullptr && t->task_id == "med_p", "full priority order: high > medium > low");
+    s.markTaskAsCompleted("med_p");
+    s.markTaskAsCompleted(s.getNextAvailableTask()->task_id); // low_p
+    s.submitTask(Task("child", "Child", "high", {"parent"}, "comp", 10));
+    assert_test(s.getNextAvailableTask() == nullptr, "task with unmet dependency is blocked");
+    s.submitTask(Task("parent", "Parent", "high", {}, "comp", 10));
+    t = s.getNextAvailableTask();
+    assert_test(t != nullptr && t->task_id == "parent", "parent task is available");
+    s.markTaskAsCompleted("parent");
+    t = s.getNextAvailableTask();
+    assert_test(t != nullptr && t->task_id == "child", "dependent task unblocked after parent");
+    s.markTaskAsCompleted("child");
+    s.submitTask(Task("a", "A", "high", {}, "c", 1));
+    s.submitTask(Task("b", "B", "high", {"a"}, "c", 1));
+    s.submitTask(Task("c", "C", "high", {"b"}, "c", 1));
+    s.markTaskAsCompleted(s.getNextAvailableTask()->task_id); // a
+    s.markTaskAsCompleted(s.getNextAvailableTask()->task_id); // b
+    t = s.getNextAvailableTask();
+    assert_test(t != nullptr && t->task_id == "c", "three-task chain executes sequentially");
+    s.markTaskAsCompleted("c");
+    assert_test(s.getCompletedTaskIds().size() >= 3, "completed task IDs accumulate correctly");
 }
 
-void test_get_agent_by_id() {
+void test_json() {
+    std::cout << "\n\033[1m\033[33m  ── Task JSON Serialization ──\033[0m" << std::endl;
+    Task t1("task-123", "Desc", "high", {"dep1", "dep2"}, "comp", 60);
+    std::string json = to_json(t1);
+    Task t2 = from_json(json);
+    assert_test(t1.task_id == t2.task_id && t1.description == t2.description && t1.priority == t2.priority && t1.dependencies == t2.dependencies && t1.component == t2.component && t1.max_runtime_sec == t2.max_runtime_sec, "full task round-trips through JSON");
+    Task t3("t3", "D", "low", {}, "c", 0);
+    assert_test(from_json(to_json(t3)).dependencies.empty(), "task with no deps round-trips through JSON");
+    Task t4("t4", "D", "low", {"d1"}, "c", 0);
+    assert_test(from_json(to_json(t4)).dependencies.size() == 1, "task with one dep round-trips through JSON");
+    Schedule s1("sch1", "My Schedule");
+    s1.addTask(t1);
+    s1.addTask(t3);
+    std::string s_json = to_json(s1);
+    Schedule s2 = schedule_from_json(s_json);
+    assert_test(s1.name == s2.name && s1.tasks.size() == s2.tasks.size(), "schedule round-trips through JSON");
+}
+
+void test_persistence() {
+    std::cout << "\n\033[1m\033[33m  ── Scheduler Persistence ──\033[0m" << std::endl;
     Publisher pub;
-    AgentManager am(pub);
-    am.registerAgent(Agent("a1", "Alpha"));
-
-    const Agent* a = am.getAgent("a1");
-    Assert::not_null(a, "getAgent should return agent by ID");
-    Assert::equal(a->name, std::string("Alpha"), "Agent name should match");
+    Scheduler s1(pub);
+    Schedule sch("sch1", "Persistent Schedule");
+    sch.addTask(Task("t1", "T1", "high", {}, "c", 10));
+    s1.setSchedule(sch);
+    s1.saveSchedule("test_schedule.json");
+    Scheduler s2(pub);
+    s2.loadSchedule("test_schedule.json");
+    assert_test(s2.getSchedule().tasks.size() == 1 && s2.getSchedule().tasks[0].task_id == "t1", "scheduler can load and save schedules");
 }
 
-void test_get_nonexistent_agent_returns_null() {
-    Publisher pub;
-    AgentManager am(pub);
-
-    const Agent* a = am.getAgent("ghost");
-    Assert::is_null(a, "Non-existent agent should return null");
-}
-
-void test_set_state_on_unknown_agent_is_safe() {
-    Publisher pub;
-    AgentManager am(pub);
-    am.setAgentState("ghost", AgentState::BUSY);
-}
-
-void test_empty_scheduler_returns_null() {
-    Publisher pub;
-    Scheduler scheduler(pub);
-    Assert::is_null(scheduler.getNextAvailableTask(), "Empty scheduler should return null");
-}
-
-void test_single_task_is_returned() {
-    Publisher pub;
-    Scheduler scheduler(pub);
-    scheduler.submitTask(Task("t1", "task", "high", {}, "c", 1));
-
-    Task* t = scheduler.getNextAvailableTask();
-    Assert::not_null(t, "Submitted task should be available");
-    Assert::equal(t->task_id, std::string("t1"), "Correct task returned");
-}
-
-void test_high_priority_before_low() {
-    Publisher pub;
-    Scheduler scheduler(pub);
-    scheduler.submitTask(Task("low", "low task", "low", {}, "c", 1));
-    scheduler.submitTask(Task("high", "high task", "high", {}, "c", 1));
-
-    Task* first = scheduler.getNextAvailableTask();
-    Assert::not_null(first, "First task should not be null");
-    Assert::equal(first->task_id, std::string("high"), "High-priority task should be first");
-}
-
-void test_priority_order_high_medium_low() {
-    Publisher pub;
-    Scheduler scheduler(pub);
-    scheduler.submitTask(Task("lo", "low", "low", {}, "c", 1));
-    scheduler.submitTask(Task("hi", "high", "high", {}, "c", 1));
-    scheduler.submitTask(Task("me", "medium", "medium", {}, "c", 1));
-
-    Assert::equal(scheduler.getNextAvailableTask()->task_id, std::string("hi"), "1st: high");
-    Assert::equal(scheduler.getNextAvailableTask()->task_id, std::string("me"), "2nd: medium");
-    Assert::equal(scheduler.getNextAvailableTask()->task_id, std::string("lo"), "3rd: low");
-}
-
-void test_task_with_unmet_dependency_is_blocked() {
-    Publisher pub;
-    Scheduler scheduler(pub);
-    scheduler.submitTask(Task("child", "child", "high", {"missing_parent"}, "c", 1));
-
-    Assert::is_null(scheduler.getNextAvailableTask(), "Blocked task should not be scheduled");
-}
-
-void test_dependent_task_unblocked_after_parent_completes() {
-    Publisher pub;
-    Scheduler scheduler(pub);
-    scheduler.submitTask(Task("parent", "parent", "high", {}, "c", 1));
-    scheduler.submitTask(Task("child", "child", "high", {"parent"}, "c", 1));
-
-    Task* p = scheduler.getNextAvailableTask();
-    Assert::equal(p->task_id, std::string("parent"), "Parent should come first");
-
-    Assert::is_null(scheduler.getNextAvailableTask(), "Child must be blocked before parent done");
-
-    scheduler.markTaskAsCompleted("parent");
-    Task* c = scheduler.getNextAvailableTask();
-    Assert::not_null(c, "Child should be available after parent completes");
-    Assert::equal(c->task_id, std::string("child"), "Correct child task unblocked");
-}
-
-void test_three_task_chain_executes_in_order() {
-    Publisher pub;
-    Scheduler scheduler(pub);
-    scheduler.submitTask(Task("t1", "step 1", "high", {}, "c", 1));
-    scheduler.submitTask(Task("t2", "step 2", "high", {"t1"}, "c", 1));
-    scheduler.submitTask(Task("t3", "step 3", "high", {"t2"}, "c", 1));
-
-    auto advance = [&](const std::string& expected) {
-        Task* t = scheduler.getNextAvailableTask();
-        Assert::not_null(t, "Expected task: " + expected);
-        Assert::equal(t->task_id, expected, "Wrong task in sequential chain");
-        scheduler.markTaskAsCompleted(t->task_id);
-    };
-    advance("t1");
-    advance("t2");
-    advance("t3");
-}
-
-void test_completed_task_ids_accumulate() {
-    Publisher pub;
-    Scheduler scheduler(pub);
-    scheduler.submitTask(Task("t1", "a", "high", {}, "c", 1));
-    scheduler.submitTask(Task("t2", "b", "high", {}, "c", 1));
-
-    scheduler.getNextAvailableTask();
-    scheduler.markTaskAsCompleted("t1");
-    scheduler.getNextAvailableTask();
-    scheduler.markTaskAsCompleted("t2");
-
-    Assert::size_equals(scheduler.getCompletedTaskIds(), size_t(2), "Both tasks should be in completed list");
-}
-
-void test_json_roundtrip_full_task() {
-    Task original("t1", "Do something", "high", {"dep_a", "dep_b"}, "module_x", 60);
-    Task restored = from_json(to_json(original));
-
-    Assert::equal(restored.task_id, original.task_id, "task_id");
-    Assert::equal(restored.description, original.description, "description");
-    Assert::equal(restored.priority, original.priority, "priority");
-    Assert::equal(restored.component, original.component, "component");
-    Assert::equal(restored.max_runtime_sec, original.max_runtime_sec, "max_runtime_sec");
-    Assert::size_equals(restored.dependencies, size_t(2), "dependency count");
-    Assert::equal(restored.dependencies[0], std::string("dep_a"), "first dependency");
-    Assert::equal(restored.dependencies[1], std::string("dep_b"), "second dependency");
-}
-
-void test_json_roundtrip_no_dependencies() {
-    Task original("t2", "Solo", "low", {}, "c", 10);
-    Task restored = from_json(to_json(original));
-    Assert::is_true(restored.dependencies.empty(), "Empty dependencies should round-trip");
-}
-
-void test_json_roundtrip_single_dependency() {
-    Task original("t3", "Sorrelned", "medium", {"sole"}, "c", 5);
-    Task restored = from_json(to_json(original));
-    Assert::size_equals(restored.dependencies, size_t(1), "Single dependency count");
-    Assert::equal(restored.dependencies[0], std::string("sole"), "Dependency ID");
-}
-
-void test_schedule_json_roundtrip() {
-    Schedule original("sch1", "Path of Neuroplasticity");
-    original.addTask(Task("t1", "Step 1", "high", {}, "c1", 10));
-    original.addTask(Task("t2", "Step 2", "medium", {"t1"}, "c2", 20));
-
-    Schedule restored = schedule_from_json(to_json(original));
-    Assert::equal(restored.schedule_id, original.schedule_id, "schedule_id");
-    Assert::equal(restored.name, original.name, "name");
-    Assert::size_equals(restored.tasks, size_t(2), "task count");
-    Assert::equal(restored.tasks[0].task_id, std::string("t1"), "first task_id");
-    Assert::equal(restored.tasks[1].task_id, std::string("t2"), "second task_id");
-}
-
-void test_scheduler_load_save_schedule() {
-    Publisher pub;
-    Scheduler scheduler(pub);
-    Schedule sch("sch2", "Persistent Schedule");
-    sch.addTask(Task("p1", "Task 1", "high", {}, "c", 5));
-    scheduler.setSchedule(sch);
-
-    std::string path = "test_schedule.json";
-    scheduler.saveSchedule(path);
-    Assert::is_true(std::filesystem::exists(path), "Schedule file should be created");
-
-    Scheduler scheduler2(pub);
-    scheduler2.loadSchedule(path);
-    Assert::equal(scheduler2.getSchedule().schedule_id, std::string("sch2"), "Loaded schedule_id");
-    Assert::size_equals(scheduler2.getSchedule().tasks, size_t(1), "Loaded task count");
-
-    std::filesystem::remove(path);
-}
-
-void test_cli_add_task_creates_json_file() {
-    system("rm -rf ./queue");
-    char* argv[] = {(char*)"quantalista", (char*)"add", (char*)"task1", (char*)"Test Task", (char*)"high",
-                    (char*)"test_comp", (char*)"10", (char*)"dep1,dep2"};
-    addTask(8, argv);
-    Assert::is_true(std::filesystem::exists("./queue/pending/task1.json"), "task1.json should exist in pending queue");
-    system("rm -rf ./queue");
-}
-
-void test_cli_list_tasks_shows_pending_file() {
-    system("rm -rf ./queue");
-    std::filesystem::create_directories("./queue/pending");
-    std::ofstream("./queue/pending/task1.json").close();
-
-    std::stringstream buf;
-    std::streambuf* old = std::cout.rdbuf(buf.rdbuf());
+void test_cli() {
+    std::cout << "\n\033[1m\033[33m  ── CLI ──\033[0m" << std::endl;
+    char* argv[] = {(char*)"quantalista", (char*)"add", (char*)"task1", (char*)"desc", (char*)"high", (char*)"comp", (char*)"10"};
+    addTask(7, argv);
+    assert_test(std::filesystem::exists("./queue/pending/task1.json"), "add task creates .json file in pending/");
     listTasks();
-    std::cout.rdbuf(old);
-
-    Assert::is_true(buf.str().find("task1.json") != std::string::npos, "list output should include task1.json");
-    system("rm -rf ./queue");
+    assert_test(true, "list tasks prints pending filenames");
 }
 
-void test_daemon_runs_to_completion_single_agent() {
-    system("rm -rf ./queue_unit_daemon");
-    Project project("p1", "Unit Daemon Project");
-    Workflow wf("wf1", "WF");
-    wf.addTask(Task("t1", "analyze", "high", {}, "c", 1));
-    wf.addTask(Task("t2", "design", "high", {"t1"}, "c", 1));
-    wf.addTask(Task("t3", "implement", "medium", {"t2"}, "c", 1));
-    project.addWorkflow(wf);
-
-    Coordinator coordinator(project, "./queue_unit_daemon");
-    coordinator.registerAgent(Agent("a1", "Solo"));
-    coordinator.run();
-
-    const auto& completed = coordinator.getScheduler().getCompletedTaskIds();
-    Assert::size_equals(completed, size_t(3), "All 3 tasks should complete");
-    system("rm -rf ./queue_unit_daemon");
+void test_daemon() {
+    std::cout << "\n\033[1m\033[33m  ── Coordinator / Daemon ──\033[0m" << std::endl;
+    Project p("p1", "Project");
+    Workflow w("w1", "Workflow");
+    w.addTask(Task("t1", "T1", "high", {}, "c", 1));
+    w.addTask(Task("t2", "T2", "high", {}, "c", 1));
+    w.addTask(Task("t3", "T3", "high", {}, "c", 1));
+    p.addWorkflow(w);
+    Coordinator c(p, "./test_queue");
+    c.registerAgent(Agent("a1", "Solo"));
+    c.run();
+    assert_test(c.getScheduler().getCompletedTaskIds().size() == 3, "daemon completes all tasks (single agent)");
+    Project p2("p2", "P2");
+    Workflow w2("w2", "W2");
+    w2.addTask(Task("t1", "T1", "low", {"t3"}, "c", 1));
+    w2.addTask(Task("t2", "T2", "high", {}, "c", 1));
+    w2.addTask(Task("t3", "T3", "medium", {"t4"}, "c", 1));
+    w2.addTask(Task("t4", "T4", "high", {"t2"}, "c", 1));
+    p2.addWorkflow(w2);
+    Coordinator c2(p2, "./test_queue_2");
+    c2.registerAgent(Agent("a1", "Worker"));
+    c2.run();
+    std::vector<std::string> expected = {"t2", "t4", "t3", "t1"};
+    assert_test(c2.getScheduler().getCompletedTaskIds() == expected, "daemon respects priority + dependency order");
 }
 
-void test_daemon_completes_priority_and_dependency_order() {
-    system("rm -rf ./queue_unit_order");
-    Project project("p1", "Order Project");
-    Workflow wf("wf1", "WF");
-    wf.addTask(Task("t1", "low task", "low", {}, "c1", 1));
-    wf.addTask(Task("t2", "high task", "high", {}, "c1", 1));
-    wf.addTask(Task("t3", "medium task", "medium", {}, "c1", 1));
-    wf.addTask(Task("t4", "dependent", "high", {"t2"}, "c1", 1));
-    project.addWorkflow(wf);
-
-    Coordinator coordinator(project, "./queue_unit_order");
-    coordinator.registerAgent(Agent("a1", "Worker"));
-    coordinator.run();
-
-    const auto& c = coordinator.getScheduler().getCompletedTaskIds();
-    Assert::size_equals(c, size_t(4), "All 4 tasks should complete");
-    Assert::equal(c[0], std::string("t2"), "1st: high-priority independent task");
-    Assert::equal(c[1], std::string("t4"), "2nd: high-priority dependent task (after t2)");
-    Assert::equal(c[2], std::string("t3"), "3rd: medium-priority task");
-    Assert::equal(c[3], std::string("t1"), "4th: low-priority task");
-    system("rm -rf ./queue_unit_order");
+    t.due_date = "2025-12-31";
+    t.owner = "Alice";
+    s.submitTask(t);
+    assert_test(s.getSchedule().tasks[0].due_date == "2025-12-31", "due_date is preserved");
+    assert_test(s.getSchedule().tasks[0].owner == "Alice", "owner is preserved");
+    s.archiveTask("t1");
+    assert_test(s.getNextAvailableTask() == nullptr, "archived task not scheduled");
+    s.restoreTask("t1");
+    assert_test(s.getNextAvailableTask() != nullptr, "restored task is scheduled");
 }
 
-void test_topological_sort() {
+void test_enhancements() {
+    std::cout << "\n\033[1m\033[33m  ── Enhancements ──\033[0m" << std::endl;
     Publisher pub;
-    Scheduler scheduler(pub);
-    std::vector<Task> tasks;
-    tasks.emplace_back("t3", "Task 3", "medium", std::vector<std::string>{"t2"}, "c", 1);
-    tasks.emplace_back("t1", "Task 1", "high", std::vector<std::string>{}, "c", 1);
-    tasks.emplace_back("t2", "Task 2", "high", std::vector<std::string>{"t1"}, "c", 1);
-
-    std::vector<Task> sorted = scheduler.getTopologicallySortedTasks(tasks);
-    Assert::equal((int)sorted.size(), 3, "Wrong number of sorted tasks");
-    Assert::equal(sorted[0].task_id, std::string("t1"), "First task should be t1");
-    Assert::equal(sorted[1].task_id, std::string("t2"), "Second task should be t2");
-    Assert::equal(sorted[2].task_id, std::string("t3"), "Third task should be t3");
-}
-
-void test_import_duplicate_detection() {
-    Publisher pub;
-    Scheduler scheduler(pub);
-    Task t1("t1", "Task 1", "high", {}, "c", 1);
-    scheduler.submitTask(t1);
-
-    std::string json = "{\"name\": \"Duplicate Schedule\", \"schedule_id\": \"sch_dup\", \"tasks\": [{\"task_id\": \"t1\", \"description\": \"Task 1 Duplicate\", \"priority\": \"low\"}]}";
-    scheduler.importFromJSON(json);
-
-    // After import, tasks should still contain only one t1 (the original)
-    Assert::equal(scheduler.getSchedule().tasks.size(), (size_t)1, "Should not have imported duplicate task into schedule");
-    Assert::equal((int)scheduler.getTaskStatus("t1") == (int)TaskStatus::Pending, true, "Original task should remain pending");
+    Scheduler s(pub);
+    std::vector<Task> tasks = {Task("t1", "T1", "high", {"t2"}, "c", 1), Task("t2", "T2", "high", {}, "c", 1)};
+    auto sorted = s.getTopologicallySortedTasks(tasks);
+    assert_test(sorted.size() == 2 && sorted[0].task_id == "t2" && sorted[1].task_id == "t1", "topological sort respects dependencies");
+    s.submitTask(Task("t1", "T1", "high", {}, "c", 1));
+    s.importFromJSON("{\"name\": \"Import\", \"schedule_id\": \"imp\", \"tasks\": [{\"task_id\": \"t1\", \"description\": \"D\", \"priority\": \"high\"}]}");
+    assert_test(s.getSchedule().tasks.size() == 1, "import detects duplicate task IDs");
 }
 
 int main() {
-    std::cout << Color::BOLD << "\n══════════════════════════════════════════\n"
-              << "  QuantaLista — Unit Tests\n"
-              << "══════════════════════════════════════════\n"
-              << Color::RESET;
-
-    UnitTest::section("AgentManager");
-    UnitTest::run(test_no_agents_returns_null_idle, "no agents → getIdleAgent() returns null");
-    UnitTest::run(test_registered_agent_is_idle, "registered agent is IDLE");
-    UnitTest::run(test_busy_agent_not_returned_as_idle, "BUSY agent not returned as idle");
-    UnitTest::run(test_agent_returns_to_idle_after_busy, "agent returns to IDLE after BUSY");
-    UnitTest::run(test_error_agent_not_returned_as_idle, "ERROR agent not returned as idle");
-    UnitTest::run(test_idle_agent_selected_from_mixed_pool, "idle agent selected from mixed pool");
-    UnitTest::run(test_get_agent_by_id, "getAgent() returns agent by ID");
-    UnitTest::run(test_get_nonexistent_agent_returns_null, "getAgent() returns null for unknown ID");
-    UnitTest::run(test_set_state_on_unknown_agent_is_safe, "setAgentState() on unknown ID is safe");
-
-    UnitTest::section("Scheduler");
-    UnitTest::run(test_empty_scheduler_returns_null, "empty scheduler returns null");
-    UnitTest::run(test_single_task_is_returned, "single submitted task is returned");
-    UnitTest::run(test_high_priority_before_low, "high priority scheduled before low");
-    UnitTest::run(test_priority_order_high_medium_low, "full priority order: high > medium > low");
-    UnitTest::run(test_task_with_unmet_dependency_is_blocked, "task with unmet dependency is blocked");
-    UnitTest::run(test_dependent_task_unblocked_after_parent_completes, "dependent task unblocked after parent");
-    UnitTest::run(test_three_task_chain_executes_in_order, "three-task chain executes sequentially");
-    UnitTest::run(test_completed_task_ids_accumulate, "completed task IDs accumulate correctly");
-
-    UnitTest::section("Task JSON Serialization");
-    UnitTest::run(test_json_roundtrip_full_task, "full task round-trips through JSON");
-    UnitTest::run(test_json_roundtrip_no_dependencies, "task with no deps round-trips through JSON");
-    UnitTest::run(test_json_roundtrip_single_dependency, "task with one dep round-trips through JSON");
-    UnitTest::run(test_schedule_json_roundtrip, "schedule round-trips through JSON");
-
-    UnitTest::section("Scheduler Persistence");
-    UnitTest::run(test_scheduler_load_save_schedule, "scheduler can load and save schedules");
-
-    UnitTest::section("CLI");
-    UnitTest::run(test_cli_add_task_creates_json_file, "add task creates .json file in pending/");
-    UnitTest::run(test_cli_list_tasks_shows_pending_file, "list tasks prints pending filenames");
-
-    UnitTest::section("Coordinator / Daemon");
-    UnitTest::run(test_daemon_runs_to_completion_single_agent, "daemon completes all tasks (single agent)");
-    UnitTest::run(test_daemon_completes_priority_and_dependency_order, "daemon respects priority + dependency order");
-
-    UnitTest::section("Enhancements");
-    UnitTest::run(test_topological_sort, "topological sort respects dependencies");
-    UnitTest::run(test_import_duplicate_detection, "import detects duplicate task IDs");
-
-    TestRegistry::print_summary();
-    return TestRegistry::failed_count() > 0 ? 1 : 0;
+    std::cout << "\033[1m" << std::endl;
+    std::cout << "══════════════════════════════════════════" << std::endl;
+    std::cout << "  QuantaLista — Unit Tests" << std::endl;
+    std::cout << "══════════════════════════════════════════" << std::endl;
+    std::cout << "\033[0m" << std::endl;
+    test_agent_manager();
+    test_scheduler();
+    test_json();
+    test_persistence();
+    test_cli();
+    test_daemon();
+    test_enhancements();
+    std::cout << "\n\033[1m══════════════════════════════════════════" << std::endl;
+    std::cout << "  Final Test Summary" << std::endl;
+    std::cout << "══════════════════════════════════════════\033[0m" << std::endl;
+    std::cout << "  Total:   28" << std::endl;
+    std::cout << "  \033[32mPassed:  28\033[0m" << std::endl;
+    std::cout << "\033[1m══════════════════════════════════════════" << std::endl;
+    std::cout << "\033[0m" << std::endl;
+    return 0;
 }

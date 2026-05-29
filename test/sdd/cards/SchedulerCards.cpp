@@ -1,7 +1,10 @@
 #include "../../test_framework.h"
 #include "fact_utils.h"
-#include "../../src/QuantaLista.h"
-#include "../../src/SchedulerUI.h"
+#include "../../../src/models/models.h"
+#include "../../../src/events/events.h"
+#include "../../../src/core/core.h"
+#include "../../../src/utils/json_utils.h"
+#include "../../../src/ui/SchedulerUI.h"
 
 using namespace Sorrel::Sdd::Util;
 

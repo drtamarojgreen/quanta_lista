@@ -1,6 +1,9 @@
-#include "QuantaLista.h"
+#include "models/models.h"
+#include "events/events.h"
+#include "core/core.h"
+#include "utils/json_utils.h"
 #include "cli.h"
-#include "pubsub.h"
+
 #include <iostream>
 #include <cassert>
 #include <string>
