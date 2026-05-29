@@ -562,14 +562,14 @@ void Coordinator::processPendingTasks() {
             auto in_progress_path = in_progress_dir / filename;
             std::filesystem::rename(entry.path(), in_progress_path);
             scheduler.submitTask(task);
-            
+
             std::string output = "Task processed successfully.";
             if (model_backend.is_available()) {
                 output = model_backend.run_model(task.description);
             } else {
                 std::this_thread::sleep_for(std::chrono::seconds(1));
             }
-            
+
             scheduler.markTaskAsCompleted(task.task_id);
             auto completed_path = completed_dir / filename;
             std::ofstream result_file(completed_path);
