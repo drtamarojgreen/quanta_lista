@@ -1,6 +1,9 @@
 #include "schedule_management_steps.h"
 #include "../../test_framework.h"
-#include "../../../src/QuantaLista.h"
+#include "../../../src/models/models.h"
+#include "../../../src/events/events.h"
+#include "../../../src/core/core.h"
+#include "../../../src/utils/json_utils.h"
 #include <filesystem>
 #include <fstream>
 

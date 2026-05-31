@@ -1,6 +1,7 @@
-#include "QuantaLista.h"
 #include "cli.h"
-#include "SchedulerUI.h"
+#include "../core/core.h"
+#include "../ui/SchedulerUI.h"
+#include "../utils/json_utils.h"
 #include <iostream>
 #include <string>
 #include <vector>
@@ -24,11 +25,8 @@ void addTask(int argc, char* argv[]) {
         std::string deps_str = argv[7];
         std::stringstream ss(deps_str);
         std::string dep;
-        while (std::getline(ss, dep, ',')) {
-            task.dependencies.push_back(dep);
-        }
+        while (std::getline(ss, dep, ',')) task.dependencies.push_back(dep);
     }
-
     std::string task_json_str = to_json(task);
     std::filesystem::create_directories("./queue/pending");
     std::string filename = "./queue/pending/" + task.task_id + ".json";
@@ -42,31 +40,14 @@ void listTasks() {
     std::filesystem::create_directories("./queue/in_progress");
     std::filesystem::create_directories("./queue/completed");
     std::filesystem::create_directories("./queue/failed");
-
     std::cout << "--- Pending Tasks ---" << std::endl;
-    if (std::filesystem::exists("./queue/pending")) {
-        for (const auto& entry : std::filesystem::directory_iterator("./queue/pending")) {
-            std::cout << entry.path().filename() << std::endl;
-        }
-    }
+    if (std::filesystem::exists("./queue/pending")) for (const auto& entry : std::filesystem::directory_iterator("./queue/pending")) std::cout << entry.path().filename() << std::endl;
     std::cout << "--- In Progress Tasks ---" << std::endl;
-    if (std::filesystem::exists("./queue/in_progress")) {
-        for (const auto& entry : std::filesystem::directory_iterator("./queue/in_progress")) {
-            std::cout << entry.path().filename() << std::endl;
-        }
-    }
+    if (std::filesystem::exists("./queue/in_progress")) for (const auto& entry : std::filesystem::directory_iterator("./queue/in_progress")) std::cout << entry.path().filename() << std::endl;
     std::cout << "--- Completed Tasks ---" << std::endl;
-    if (std::filesystem::exists("./queue/completed")) {
-        for (const auto& entry : std::filesystem::directory_iterator("./queue/completed")) {
-            std::cout << entry.path().filename() << std::endl;
-        }
-    }
+    if (std::filesystem::exists("./queue/completed")) for (const auto& entry : std::filesystem::directory_iterator("./queue/completed")) std::cout << entry.path().filename() << std::endl;
     std::cout << "--- Failed Tasks ---" << std::endl;
-    if (std::filesystem::exists("./queue/failed")) {
-        for (const auto& entry : std::filesystem::directory_iterator("./queue/failed")) {
-            std::cout << entry.path().filename() << std::endl;
-        }
-    }
+    if (std::filesystem::exists("./queue/failed")) for (const auto& entry : std::filesystem::directory_iterator("./queue/failed")) std::cout << entry.path().filename() << std::endl;
 }
 
 void showHelp() {
@@ -83,18 +64,14 @@ void showHelp() {
 }
 
 void handleCommand(int argc, char* argv[]) {
-    if (argc < 2) {
-        showHelp();
-        return;
-    }
+    if (argc < 2) { showHelp(); return; }
     std::string cmd = argv[1];
     if (cmd == "add") addTask(argc, argv);
     else if (cmd == "list") listTasks();
     else if (cmd == "dashboard") runDashboard();
     else if (cmd == "agent") {
-        if (argc > 3 && std::string(argv[2]) == "register") {
-             std::cout << "Registering agent: " << argv[3] << std::endl;
-        } else if (argc > 3 && std::string(argv[2]) == "disable") {
+        if (argc > 3 && std::string(argv[2]) == "register") std::cout << "Registering agent: " << argv[3] << std::endl;
+        else if (argc > 3 && std::string(argv[2]) == "disable") {
              std::cout << "Disabling agent: " << argv[3] << std::endl;
              Publisher pub;
              AgentManager am(pub);
@@ -104,11 +81,8 @@ void handleCommand(int argc, char* argv[]) {
              Publisher pub;
              AgentManager am(pub);
              am.enableAgent(argv[3]);
-        } else {
-             std::cout << "Listing agents..." << std::endl;
-        }
-    }
-    else if (cmd == "task") {
+        } else std::cout << "Listing agents..." << std::endl;
+    } else if (cmd == "task") {
         if (argc > 3 && std::string(argv[2]) == "archive") {
             std::cout << "Archiving task: " << argv[3] << std::endl;
             Publisher pub;
@@ -119,34 +93,21 @@ void handleCommand(int argc, char* argv[]) {
             Publisher pub;
             Scheduler s(pub);
             s.restoreTask(argv[3]);
-        } else {
-            std::cout << "Task subcommand not recognized or missing ID." << std::endl;
-        }
-    }
-    else if (cmd == "workflow") {
+        } else std::cout << "Task subcommand not recognized or missing ID." << std::endl;
+    } else if (cmd == "workflow") {
         if (argc > 2) std::cout << "Workflow action: " << argv[2] << std::endl;
-    }
-    else if (cmd == "backup") {
+    } else if (cmd == "backup") {
         if (argc > 3 && std::string(argv[2]) == "create") {
              Publisher pub;
              Scheduler s(pub);
              s.createBackup(argv[3]);
              std::cout << "Backup created at " << argv[3] << std::endl;
         }
-    }
-    else if (cmd == "config") {
-        if (argc > 3 && std::string(argv[2]) == "set") {
-             std::cout << "Config set: " << argv[3] << std::endl;
-        }
-    }
-    else if (cmd == "diagnostics") {
-        std::cout << "Running diagnostics..." << std::endl;
-    }
+    } else if (cmd == "config") {
+        if (argc > 3 && std::string(argv[2]) == "set") std::cout << "Config set: " << argv[3] << std::endl;
+    } else if (cmd == "diagnostics") std::cout << "Running diagnostics..." << std::endl;
     else if (cmd == "help") showHelp();
-    else {
-        std::cerr << "Unknown command: " << cmd << std::endl;
-        showHelp();
-    }
+    else { std::cerr << "Unknown command: " << cmd << std::endl; showHelp(); }
 }
 
 void runDashboard() {
@@ -155,7 +116,6 @@ void runDashboard() {
     Greenhouse::UI::SchedulerUI ui;
     std::vector<Agent> agents;
     agents.push_back(Agent("a1", "Agent 1"));
-
-    std::cout << "\033[2J\033[H"; // Clear screen
+    std::cout << "\033[2J\033[H";
     std::cout << ui.renderDashboard(scheduler.getSchedule(), agents) << std::endl;
 }

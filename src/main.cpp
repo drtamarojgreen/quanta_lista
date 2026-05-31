@@ -1,4 +1,7 @@
-#include "QuantaLista.h"
+#include "core/core.h"
+#include "cli/cli.h"
+#include "ui/SchedulerUI.h"
+#include "utils/json_utils.h"
 #include <iostream>
 #include <string>
 #include <vector>
@@ -6,9 +9,6 @@
 #include <iomanip>
 #include <fstream>
 #include <filesystem>
-
-#include "cli.h"
-#include "SchedulerUI.h"
 
 // --- Helper functions for logging enums ---
 std::string to_string(TaskStatus status) {
@@ -59,47 +59,32 @@ int main(int argc, char* argv[]) {
     if (argc > 1) {
         std::string command = argv[1];
         if (command == "daemon") {
-            // Create a sample project as defined in the plan
             Project project("p1", "Sample Project");
             Workflow workflow("wf1", "Sample Workflow");
-
-            // Define tasks with dependencies
             Task task1("task1", "Analyze requirements", "high", {}, "analysis", 10);
             Task task2("task2", "Design architecture", "high", {"task1"}, "design", 20);
             Task task3("task3", "Implement feature", "medium", {"task2"}, "implementation", 30);
             Task task4("task4", "Write documentation", "low", {"task3"}, "documentation", 15);
-
             workflow.addTask(task1);
             workflow.addTask(task2);
             workflow.addTask(task3);
             workflow.addTask(task4);
-
             project.addWorkflow(workflow);
-
-            // Initialize the Coordinator with the project
             Coordinator coordinator(project, "./queue");
-
-            // --- Register the Logging Subscriber ---
             LoggingSubscriber logger;
             Publisher& pub = coordinator.getEventPublisher();
             pub.subscribe(EventType::TaskCreated, &logger);
             pub.subscribe(EventType::TaskStatusChanged, &logger);
             pub.subscribe(EventType::AgentStateChanged, &logger);
             std::cout << "Logging subscriber registered." << std::endl;
-
-
-            // Register a couple of agents
             coordinator.registerAgent(Agent("agent-001", "Researcher"));
             coordinator.registerAgent(Agent("agent-002", "Writer"));
-
             coordinator.run();
         } else if (command == "ui") {
             Greenhouse::UI::SchedulerUI ui;
             std::string view = (argc > 2) ? argv[2] : "patient";
-
             std::cout << ui.renderNotification("Entering Greenhouse Scheduler UI", "info") << std::endl;
             std::cout << ui.renderViewSelector(view) << std::endl;
-
             if (view == "patient") {
                 std::cout << ui.renderPatientForm() << std::endl;
                 std::cout << ui.renderPatientCalendar(2025, 5) << std::endl;
@@ -145,11 +130,7 @@ int main(int argc, char* argv[]) {
             } else {
                 std::cout << "Usage: quantalista schedule <save|load> <path>" << std::endl;
             }
-        }
-        else {
-            std::cerr << "Unknown command: " << command << std::endl;
-            return 1;
-        }
+        } else handleCommand(argc, argv);
     } else {
         std::cout << "Usage: " << argv[0] << " <command>" << std::endl;
         std::cout << "Commands:" << std::endl;
@@ -159,6 +140,5 @@ int main(int argc, char* argv[]) {
         std::cout << "  schedule    - Save or load a schedule (save|load <path>)" << std::endl;
         std::cout << "  ui [view]   - Display the Greenhouse Scheduler UI (patient|dashboard|admin)" << std::endl;
     }
-
     return 0;
 }

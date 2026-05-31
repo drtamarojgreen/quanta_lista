@@ -1,8 +1,11 @@
 #ifndef TEST_FRAMEWORK_H
 #define TEST_FRAMEWORK_H
 
-#include "QuantaLista.h"
-#include "pubsub.h"
+#include "models/models.h"
+#include "events/events.h"
+#include "core/core.h"
+#include "utils/json_utils.h"
+
 #include <any>
 #include <functional>
 #include <iomanip>
@@ -137,18 +140,23 @@ public:
 
     void onEvent(const Event& event) override {
         switch (event.type) {
-        case EventType::TaskCreated:
-            received_events.push_back(static_cast<const TaskCreatedEvent&>(event));
-            break;
-        case EventType::TaskStatusChanged:
-            received_events.push_back(static_cast<const TaskStatusChangedEvent&>(event));
-            break;
-        case EventType::AgentStateChanged:
-            received_events.push_back(static_cast<const AgentStateChangedEvent&>(event));
+        case EventType::TaskCreated: {
+            const auto& e = static_cast<const TaskCreatedEvent&>(event);
+            received_events.push_back(std::make_any<TaskCreatedEvent>(e));
             break;
         }
+        case EventType::TaskStatusChanged: {
+            const auto& e = static_cast<const TaskStatusChangedEvent&>(event);
+            received_events.push_back(std::make_any<TaskStatusChangedEvent>(e));
+            break;
+        }
+        case EventType::AgentStateChanged: {
+            const auto& e = static_cast<const AgentStateChangedEvent&>(event);
+            received_events.push_back(std::make_any<AgentStateChangedEvent>(e));
+            break;
+        }
+        }
     }
-
     void clear() { received_events.clear(); }
 
     template <typename T>
@@ -163,8 +171,8 @@ public:
     }
 
     template <typename T>
-    const T& get(size_t index) const {
-        return std::any_cast<const T&>(received_events.at(index));
+    T get(size_t index) const {
+        return std::any_cast<T>(received_events.at(index));
     }
 
     bool empty() const { return received_events.empty(); }

@@ -39,38 +39,25 @@ std::string SchedulerUI::renderPatientCalendar(int year, int month) {
     ss << "       " << getMonthName(month) << " " << year << "\n";
     ss << "  S   M   T   W   T   F   S\n";
     ss << "─────────────────────────────\n";
-
-    // Zeller's congruence to find the first day of the month
-    int q = 1; // 1st day
+    int q = 1;
     int m = month;
     int y = year;
-    if (m < 3) {
-        m += 12;
-        y--;
-    }
+    if (m < 3) { m += 12; y--; }
     int k = y % 100;
     int j = y / 100;
     int h = (q + 13 * (m + 1) / 5 + k + k / 4 + j / 4 + 5 * j) % 7;
-
-    // Convert h (Saturday=0, Sunday=1...) to (Sunday=0, Monday=1...)
     int firstDay = (h + 6) % 7;
-
-    // Number of days in month
     int daysInMonth = 31;
     if (month == 4 || month == 6 || month == 9 || month == 11) daysInMonth = 30;
     else if (month == 2) {
         bool isLeap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
         daysInMonth = isLeap ? 29 : 28;
     }
-
-    // Print leading spaces
     for (int i = 0; i < firstDay; ++i) ss << "    ";
-
     for (int day = 1; day <= daysInMonth; ++day) {
         ss << std::setw(3) << day << " ";
         if ((day + firstDay) % 7 == 0) ss << "\n";
     }
-
     if ((daysInMonth + firstDay) % 7 != 0) ss << "\n";
     ss << "─────────────────────────────\n";
     return ss.str();
@@ -113,18 +100,14 @@ std::string SchedulerUI::renderDashboardWeeklySchedule(const Schedule& schedule,
     ss << "──────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┐\n";
     ss << " TIME │ SUN │ MON │ TUE │ WED │ THU │ FRI │ SAT │\n";
     ss << "──────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┤\n";
-
-    std::map<int, std::map<int, std::string>> grid; // hour -> day -> label
+    std::map<int, std::map<int, std::string>> grid;
     for (const auto& task : schedule.tasks) {
         if (!task.date.empty() && !task.time.empty()) {
             int day = calculateDayOfWeek(task.date);
             int hour = std::stoi(task.time.substr(0, 2));
-            if (hour >= 8 && hour <= 17) {
-                grid[hour][day] = "[X]";
-            }
+            if (hour >= 8 && hour <= 17) grid[hour][day] = "[X]";
         }
     }
-
     for (int hour = 8; hour <= 17; ++hour) {
         ss << " " << formatTime(hour) << " │";
         for (int day = 0; day < 7; ++day) {
@@ -138,9 +121,7 @@ std::string SchedulerUI::renderDashboardWeeklySchedule(const Schedule& schedule,
     return ss.str();
 }
 
-std::string SchedulerUI::renderDashboardCalendar(int year, int month) {
-    return renderPatientCalendar(year, month);
-}
+std::string SchedulerUI::renderDashboardCalendar(int year, int month) { return renderPatientCalendar(year, month); }
 
 std::string SchedulerUI::renderConflictList(const std::vector<std::string>& conflicts) {
     std::stringstream ss;
@@ -148,16 +129,12 @@ std::string SchedulerUI::renderConflictList(const std::vector<std::string>& conf
     if (conflicts.empty()) {
         ss << "No conflicts found.\n";
     } else {
-        for (const auto& conflict : conflicts) {
-            ss << "[!] " << conflict << "\n";
-        }
+        for (const auto& conflict : conflicts) ss << "[!] " << conflict << "\n";
     }
     return ss.str();
 }
 
-std::string SchedulerUI::renderNewAppointmentBox() {
-    return "[ NEW APPOINTMENT (DRAG ME) ]";
-}
+std::string SchedulerUI::renderNewAppointmentBox() { return "[ NEW APPOINTMENT (DRAG ME) ]"; }
 
 std::string SchedulerUI::renderAdminSettingsForm() {
     std::stringstream ss;
@@ -190,18 +167,14 @@ std::string SchedulerUI::renderConflictModal(const std::string& taskId, const st
     ss << "║      SCHEDULING CONFLICT DETECTED        ║\n";
     ss << "╠══════════════════════════════════════════╣\n";
     ss << "║ Task " << taskId << " overlaps with:           ║\n";
-    for (const auto& t : overlappingTasks) {
-        ss << "║ - " << std::left << std::setw(34) << t << " ║\n";
-    }
+    for (const auto& t : overlappingTasks) ss << "║ - " << std::left << std::setw(34) << t << " ║\n";
     ss << "╠══════════════════════════════════════════╣\n";
     ss << "║  [ CANCEL ] [ CHOOSE DIFFERENT TIME ]    ║\n";
     ss << "╚══════════════════════════════════════════╝\n";
     return ss.str();
 }
 
-std::string SchedulerUI::renderLoadingSpinner(const std::string& message) {
-    return "/ Processing " + message + "...";
-}
+std::string SchedulerUI::renderLoadingSpinner(const std::string& message) { return "/ Processing " + message + "..."; }
 
 std::string SchedulerUI::renderNotification(const std::string& message, const std::string& type) {
     std::string prefix = (type == "success") ? "[OK]" : (type == "error" ? "[ERR]" : "[INFO]");
@@ -213,13 +186,9 @@ std::string SchedulerUI::renderDashboard(const Schedule& schedule, const std::ve
     ss << "QUANTALISTA DASHBOARD\n";
     ss << "=====================\n";
     ss << "TASKS:\n";
-    for (const auto& t : schedule.tasks) {
-        ss << "- " << t.task_id << " [" << t.priority << "] " << t.description << "\n";
-    }
+    for (const auto& t : schedule.tasks) ss << "- " << t.task_id << " [" << t.priority << "] " << t.description << "\n";
     ss << "\nAGENTS:\n";
-    for (const auto& a : agents) {
-        ss << "- " << a.name << " (" << a.id << "): " << (a.disabled ? "DISABLED" : "READY") << "\n";
-    }
+    for (const auto& a : agents) ss << "- " << a.name << " (" << a.id << "): " << (a.disabled ? "DISABLED" : "READY") << "\n";
     return ss.str();
 }
 
@@ -241,15 +210,11 @@ int SchedulerUI::calculateDayOfWeek(const std::string& dateStr) {
     int year = std::stoi(dateStr.substr(0, 4));
     int month = std::stoi(dateStr.substr(5, 2));
     int day = std::stoi(dateStr.substr(8, 2));
-
-    if (month < 3) {
-        month += 12;
-        year--;
-    }
+    if (month < 3) { month += 12; year--; }
     int k = year % 100;
     int j = year / 100;
     int h = (day + 13 * (month + 1) / 5 + k + k / 4 + j / 4 + 5 * j) % 7;
-    return (h + 6) % 7; // Sunday=0, Monday=1...
+    return (h + 6) % 7;
 }
 
 } // namespace UI
