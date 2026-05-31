@@ -177,6 +177,17 @@ public:
 
     bool empty() const { return received_events.empty(); }
     size_t size() const { return received_events.size(); }
+    
+    // Helper to find specific event by condition
+    template <typename T>
+    bool has_event_matching(std::function<bool(const T&)> condition) const {
+        for (const auto& e : received_events) {
+            if (e.type() == typeid(T) && condition(std::any_cast<T>(e))) {
+                return true;
+            }
+        }
+        return false;
+    }
 };
 
 namespace UnitTest {
@@ -184,6 +195,10 @@ namespace UnitTest {
 inline void section(const std::string& title) {
     std::cout << "\n" << Color::BOLD << Color::YELLOW << "  ── " << title << " ──"
               << Color::RESET << "\n";
+}
+
+inline void step(const std::string& msg) {
+    std::cout << "      " << Color::DIM << "↳ " << Color::RESET << msg << std::endl;
 }
 
 inline void run(void (*fn)(), const std::string& name) {

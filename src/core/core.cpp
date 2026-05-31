@@ -100,7 +100,7 @@ const Agent* AgentManager::getAgent(const std::string& agentId) const {
 
 // --- Scheduler Implementation ---
 
-Scheduler::Scheduler(Publisher& pub) : publisher(pub) {}
+Scheduler::Scheduler(Publisher& pub) : publisher(pub), pending_tasks(TaskComparator{&tasks}) {}
 
 void Scheduler::submitTask(const Task& task) {
     tasks[task.task_id] = task;

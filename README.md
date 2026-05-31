@@ -9,19 +9,26 @@ It is designed for developers and researchers building sophisticated application
 - **Dynamic Task Scheduling and Prioritization**: A robust scheduling engine manages a queue of tasks, considering dependencies to ensure correct execution order.
 - **Multi-Agent Coordination Engine**: A central coordinator assigns tasks to available agents and manages their states (`IDLE`, `BUSY`).
 - **Structured and Testable Codebase**: The project is organized into a clean `src` and `test` directory structure, with a suite of unit tests to ensure reliability.
+- **Ecosystem Integration**: Integrated with Quanta Tissu, Ethos, Haba, and Glia repositories.
+- **Proven Workflows**: 50 workflows (25 basic and 25 enhanced) have been factually validated across the integrated repositories.
 
 ## Architecture Overview
 
 QuantaLista is built on a distributed, multi-repository architecture. Each component is a distinct service, designed for independent development, deployment, and scaling.
 
-- **`QuantaLista-Core`**: The central engine that orchestrates the entire process. It contains the `Coordinator`, `Scheduler`, and `AgentManager`. This repository contains the core C++ application.
-- **`QuantaLista-Gateway`**: A lightweight API gateway that provides a unified entry point for all client interactions, routing requests to the appropriate downstream service.
-- **`QuantaLista-Advisor`**: A Python-based service that provides intelligent oversight, monitoring, and recommendations. It consumes data from the core engine to provide insights.
-- **`QuantaLista-UI`**: A web-based user interface for workflow visualization, manual task management, and viewing agent status.
+- **`QuantaLista-Core`**: The central engine that orchestrates the entire process. It contains the `Coordinator`, `Scheduler`, and `AgentManager`.
+- **`QuantaLista-Gateway`**: A lightweight API gateway providing a unified entry point.
+- **`QuantaLista-Advisor`**: A Python-based service providing oversight and recommendations.
+- **`QuantaLista-UI`**: A web-based interface for workflow visualization.
+
+### Integrated Quanta Repositories:
+- **quanta_tissu**: Low-level neural/tensor operations and tokenization.
+- **quanta_lista**: Task scheduling and workflow orchestration (this repository).
+- **quanta_ethos**: Ethical validation and trustworthiness scoring.
+- **quanta_haba**: Structured design authoring and visualization.
+- **quanta_glia**: Global memory and knowledge management.
 
 ## Getting Started
-
-This repository contains the documentation and overall architectural guidelines for the QuantaLista ecosystem. The source code for each service is located in its own repository.
 
 To get started, please refer to the `README.md` file in each of the following repositories:
 - `QuantaLista-Core`
@@ -29,34 +36,33 @@ To get started, please refer to the `README.md` file in each of the following re
 - `QuantaLista-Advisor`
 - `QuantaLista-UI`
 
-## Example Usage
+### Local Configuration (.quanta)
+For integration with the full ecosystem and local model, create a `.quanta` file in the root directory to specify local paths:
+```ini
+quanta_ethos.path=/path/to/quanta_ethos
+quanta_tissu.path=/path/to/quanta_tissu
+quanta_haba.path=/path/to/quanta_haba
+quanta_glia.path=/path/to/quanta_glia
+engine.model_path=/path/to/model.gguf
+model.llama_cli_path=/path/to/llama-cli
+```
 
-The main application (`QuantaListaApp`) provides a demonstration of the core coordination loop. When you run it, it will:
-1.  Initialize a `Coordinator`.
-2.  Define a sample project with two agents ("Researcher" and "Writer").
-3.  Define a sample workflow with three tasks, where the second task depends on the first, and the third depends on the second.
-4.  Run a simulation loop where the `Coordinator` assigns the tasks to the agents in the correct, dependency-aware order.
-
-The output will show the step-by-step process of tasks being assigned, processed, and completed. This demonstrates the core functionality of the task scheduler and agent manager working in harmony.
-
-## Contributing
-
-We welcome contributions! Please see the documents in the `docs/` directory for more information on the development plan and future enhancements.
+## Documentation
+Additional plans and roadmap details are available in the `docs/` directory:
+- `integration_plan.md`: Details the 50 proven workflows and 50 future roadmap items.
+- `implementation_plan.md`: Technical strategy for multi-repo validation.
+- `enhanced_integration_plan.md`: Advanced multi-repo loops and self-healing logic.
 
 ## Testing
 
-This repository now includes a lightweight test framework in `test/test_framework.h` plus two executable suites:
+The repository includes a lightweight test framework in `test/test_framework.h` and several test suites:
 
-- `test/unit_tests.cpp` for unit-style tests
-- `test/bdd_tests.cpp` for Gherkin-style behaviour tests
+- `test/unit_tests.cpp`: Unit-style tests for core logic.
+- `test/integration/real_integration_tests.cpp`: Integration tests for basic multi-repo workflows.
+- `test/integration/enhanced_integration_tests.cpp`: Integration tests for advanced ecosystem loops.
 
-Build and run from the repository root:
-
+Build and run integration tests:
 ```bash
-g++ -std=c++17 -I./src test/unit_tests.cpp src/QuantaLista.cpp src/pubsub.cpp src/cli.cpp -o test/run_unit_tests
-./test/run_unit_tests
-
-g++ -std=c++17 -I./src -I./test test/bdd_tests.cpp test/feature/*.cpp test/step/*.cpp src/QuantaLista.cpp src/pubsub.cpp src/cli.cpp -o test/run_bdd_tests
-./test/run_bdd_tests
+make real_integration_tests
+make enhanced_integration_tests
 ```
-
