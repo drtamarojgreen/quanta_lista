@@ -202,15 +202,18 @@ inline void step(const std::string& msg) {
 }
 
 inline void run(void (*fn)(), const std::string& name) {
-    std::cout << "    " << Color::DIM << "▸ " << Color::RESET << std::left
-              << std::setw(62) << name << " ";
+    std::cout << "\n    " << Color::DIM << "▸ " << Color::RESET << name << std::endl;
     try {
+        step("Starting test body");
         fn();
-        std::cout << Color::GREEN << "PASS" << Color::RESET << "\n";
+        std::cout << "      " << Color::GREEN << "PASS" << Color::RESET << " " << name
+                  << "\n";
         TestRegistry::record("Unit", name, true);
     } catch (const std::exception& e) {
-        std::cout << Color::RED << "FAIL" << Color::RESET << "\n"
-                  << "        " << Color::RED << "→ " << e.what() << Color::RESET << "\n";
+        std::cout << "      " << Color::RED << "FAIL" << Color::RESET << " " << name
+                  << "\n"
+                  << "        " << Color::RED << "→ " << e.what() << Color::RESET
+                  << "\n";
         TestRegistry::record("Unit", name, false, e.what());
     }
 }
@@ -268,17 +271,17 @@ public:
                           << "\n";
                 continue;
             }
+            std::cout << "        " << Color::DIM << std::left << std::setw(7)
+                      << step.keyword << Color::RESET << step.text << " ... "
+                      << std::flush;
             try {
                 step.action();
-                std::cout << "        " << Color::DIM << std::left << std::setw(7)
-                          << step.keyword << Color::RESET << step.text << "\n";
+                std::cout << Color::GREEN << "PASS" << Color::RESET << "\n";
             } catch (const std::exception& e) {
                 passed = false;
                 failure_step = step.keyword + " " + step.text;
                 failure_message = e.what();
-                std::cout << "        " << Color::RED << std::left << std::setw(7)
-                          << step.keyword << Color::RESET << step.text << "  "
-                          << Color::RED << "✘ FAILED" << Color::RESET << "\n"
+                std::cout << Color::RED << "FAIL" << Color::RESET << "\n"
                           << "          " << Color::RED << "→ " << e.what()
                           << Color::RESET << "\n";
                 skip = true;

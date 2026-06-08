@@ -4,7 +4,7 @@
 #include <cstdio>
 
 void TestModelBackend_LoadConfig() {
-    // Create a temporary .quanta file
+    UnitTest::step("Writing temporary .quanta model backend configuration");
     {
         std::ofstream f(".quanta");
         f << "# Comment line\n";
@@ -12,20 +12,28 @@ void TestModelBackend_LoadConfig() {
         f << "model.llama_cli_path = test_cli\n";
     }
 
+    UnitTest::step("Constructing ModelBackend from local configuration");
     ModelBackend backend;
+    UnitTest::step("Verifying backend reports available with configured paths");
     Assert::is_true(backend.is_available(), "Backend should be available with config");
 
+    UnitTest::step("Removing temporary .quanta configuration");
     std::remove(".quanta");
 }
 
 void TestModelBackend_NoConfigFallback() {
+    UnitTest::step("Ensuring .quanta is absent before fallback check");
     if (std::remove(".quanta") == 0) {
         // file existed and was removed
     }
 
+    UnitTest::step("Constructing ModelBackend without local configuration");
     ModelBackend backend;
+    UnitTest::step("Verifying backend reports unavailable without configuration");
     Assert::is_true(!backend.is_available(), "Backend should not be available without config");
+    UnitTest::step("Running model request through unconfigured backend");
     std::string response = backend.run_model("test");
+    UnitTest::step("Verifying unconfigured backend returns the expected error message");
     Assert::equal(response, std::string("Error: Model backend not configured."), "Should return error message");
 }
 

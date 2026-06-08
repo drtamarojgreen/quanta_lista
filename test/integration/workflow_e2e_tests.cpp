@@ -8,38 +8,38 @@
 
 // E2E Test: Full Workflow Simulation with Real Components
 void TestE2E_WorkflowIngestionToDocumentation() {
-    // 1. Setup real environment
+    UnitTest::step("Creating queue directory structure");
     std::filesystem::create_directories("./queue/pending");
     std::filesystem::create_directories("./queue/in_progress");
     std::filesystem::create_directories("./queue/completed");
     std::filesystem::create_directories("./queue/failed");
 
-    // 2. Define artifacts
+    UnitTest::step("Creating pending task artifact e2e-001.json");
     Task t1("e2e-001", "Analyze project architecture", "high", {}, "analysis", 10);
     std::string task_json = to_json(t1);
     std::ofstream f("./queue/pending/e2e-001.json");
     f << task_json;
     f.close();
 
-    // 3. Setup Project/Coordinator (using real components)
+    UnitTest::step("Constructing project and coordinator using real components");
     Project p("p1", "Test Project");
     Coordinator coordinator(p, "./queue");
     
-    // 4. Run Process
-    // The Coordinator will now trigger the real ModelBackend if .quanta is present.
+    UnitTest::step("Processing pending queue through coordinator");
     coordinator.processPendingTasks();
     
-    // 5. Verify results
+    UnitTest::step("Verifying task artifact moved to completed queue");
     Assert::is_true(std::filesystem::exists("./queue/completed/e2e-001.json"), "Task should be in completed directory");
     
-    // Check if real output file exists and has content
+    UnitTest::step("Reading completed task artifact");
     std::ifstream result_file("./queue/completed/e2e-001.json");
     std::string result_content((std::istreambuf_iterator<char>(result_file)), std::istreambuf_iterator<char>());
     result_file.close();
     
+    UnitTest::step("Verifying completed artifact contains status metadata");
     Assert::is_true(result_content.find("status") != std::string::npos, "Result should contain completion status");
     
-    // 6. Cleanup
+    UnitTest::step("Cleaning up temporary queue directory");
     std::filesystem::remove_all("./queue");
 }
 
